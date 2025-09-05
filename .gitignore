@@ -214,3 +214,4 @@ pyrightconfig.json
 data/
 EDA/
 notebook/
+.gitignore
