@@ -4,6 +4,7 @@ from functools import partial
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
@@ -16,7 +17,7 @@ import json, linecache
 # 1) 하이퍼파라미터 설정
 # ---------------------------
 IMAGE_DIR = Path("/home/workspace/data/GLDv2/train/image")
-JSON_PATH = Path("/home/workspace/data/GLDv2/train/train_custom.json")
+JSON_PATH = Path("/home/workspace/data/GLDv2/train/train_custom.jsonl")
 MODEL_NAME = "ViT-B-16"          # OpenCLIP 지원 아키텍처
 PRETRAIN_DS = "laion2b_s34b_b88k"  # 사전학습 weight
 BATCH_SIZE = 16
@@ -100,7 +101,9 @@ class SimpleCLIP(nn.Module):
         return model.encode_image(image)
 
     def encode_text(self, ids):
-        return self.text_proj(self.text_enc(ids))
+        txt = self.text_enc(ids)                    # (B, dim)
+        # text_projection: (dim, proj_dim)  ⇒  matmul 로 투영
+        return F.linear(txt, self.text_proj.T)   # weight shape (proj_dim, dim) 필요시 전치
 
     def forward(self, image, text_ids):
         img_feat = self.encode_image(image)
