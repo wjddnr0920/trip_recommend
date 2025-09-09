@@ -215,3 +215,4 @@ data/
 EDA/
 notebook/
 .gitignore
+checkpoint/
