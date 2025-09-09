@@ -17,10 +17,10 @@ import json, linecache
 # 1) 하이퍼파라미터 설정
 # ---------------------------
 IMAGE_DIR = Path("/home/workspace/data/GLDv2/train/image")
-JSON_PATH = Path("/home/workspace/data/GLDv2/train/train_custom.jsonl")
+JSON_PATH = Path("/home/workspace/data/GLDv2/train/train_custom_sample.jsonl")
 MODEL_NAME = "ViT-B-16"          # OpenCLIP 지원 아키텍처
 PRETRAIN_DS = "laion2b_s34b_b88k"  # 사전학습 weight
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 EPOCHS = 5
 LR = 5e-5
 MAX_LEN = 64                     # 텍스트 토큰 길이
