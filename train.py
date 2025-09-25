@@ -12,7 +12,7 @@ import open_clip
 class Config:
     # 데이터셋 경로 설정
     # GLDv2 학습 이미지가 저장된 최상위 디렉토리
-    IMAGE_DIR = "/home/workspace/data/GLDv2/train/image/" 
+    IMAGE_DIR = "/home/workspace/data/GLDv2/train/image" 
     # 사용자 지정 메타데이터 CSV 파일 경로
     CSV_PATH = "/home/workspace/data/GLDv2/train/train_custom.csv"
 
@@ -88,7 +88,7 @@ def contrastive_loss(image_features, text_features, logit_scale):
 
     # 배치 내에서 올바른 (이미지, 텍스트) 쌍을 찾기 위한 정답 레이블을 생성합니다.
     # (0, 1, 2,..., batch_size-1)
-    batch_size = image_features.shape
+    batch_size = image_features.shape[0]
     ground_truth = torch.arange(batch_size, dtype=torch.long, device=Config.DEVICE)
 
     # 이미지 기준 손실과 텍스트 기준 손실을 각각 계산하고 평균을 냅니다.
