@@ -1,157 +1,201 @@
-import json, random, os, math
-from pathlib import Path
-from functools import partial
-
+import os
+import pandas as pd
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
 from PIL import Image
-import open_clip
-from transformers import AutoTokenizer
 from tqdm import tqdm
-import json, linecache
+import open_clip
 
-# ---------------------------
-# 1) 하이퍼파라미터 설정
-# ---------------------------
-IMAGE_DIR = Path("/home/workspace/data/GLDv2/train/image")
-JSON_PATH = Path("/home/workspace/data/GLDv2/train/train_custom_sample.jsonl")
-MODEL_NAME = "ViT-B-16"          # OpenCLIP 지원 아키텍처
-PRETRAIN_DS = "laion2b_s34b_b88k"  # 사전학습 weight
-BATCH_SIZE = 32
-EPOCHS = 5
-LR = 5e-5
-MAX_LEN = 64                     # 텍스트 토큰 길이
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# --- 1. 설정 (Configuration) ---
+# 이 섹션에서 모델, 데이터 경로, 학습 파라미터를 설정합니다.
+class Config:
+    # 데이터셋 경로 설정
+    # GLDv2 학습 이미지가 저장된 최상위 디렉토리
+    IMAGE_DIR = "/home/workspace/data/GLDv2/train/image/" 
+    # 사용자 지정 메타데이터 CSV 파일 경로
+    CSV_PATH = "/home/workspace/data/GLDv2/train/train_custom.csv"
 
-# ---------------------------
-# 2) 데이터셋 클래스
-# ---------------------------
-class GLDStreamDataset(Dataset):
-    def __init__(self, jsonl_path, image_dir, tokenizer, transform):
-        self.jsonl_path = str(jsonl_path)          # linecache 는 문자열 경로 필요
-        with open(jsonl_path, 'rb') as f:          # 라인 수만 미리 세기
-            self.n = sum(1 for _ in f)
+    # 모델 설정
+    # OpenCLIP에서 사용할 사전 학습 모델. 
+    # 사용 가능한 모델 목록은 open_clip.list_pretrained()로 확인할 수 있습니다. [4]
+    MODEL_NAME = 'ViT-B-32'
+    PRETRAINED_WEIGHTS = 'laion2b_s34b_b79k'
+
+    # 학습 하이퍼파라미터
+    EPOCHS = 5
+    BATCH_SIZE = 16 # GPU 메모리에 따라 조정
+    LEARNING_RATE = 1e-6 # 파인튜닝 시에는 낮은 학습률을 사용하는 것이 중요합니다. [5]
+    WEIGHT_DECAY = 0.1
+    
+    # 시스템 설정
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    NUM_WORKERS = 4 # 데이터 로딩을 위한 병렬 프로세스 수
+
+# --- 2. 데이터셋 클래스 정의 ---
+# PyTorch의 Dataset 클래스를 상속받아 우리 데이터에 맞게 커스터마이징합니다. [6, 7]
+class GLDv2CustomDataset(Dataset):
+    def __init__(self, image_dir, csv_path, image_preprocess):
+        """
+        Args:
+            image_dir (str): 이미지 파일이 있는 디렉토리 경로.
+            csv_path (str): 이미지 ID와 설명을 담은 CSV 파일 경로.
+            image_preprocess (callable): CLIP 모델에 맞는 이미지 전처리기.
+        """
         self.image_dir = image_dir
-        self.tok = tokenizer
-        self.transform = transform
+        self.df = pd.read_csv(csv_path)
+        self.image_preprocess = image_preprocess
 
-    def __len__(self): return self.n
-
-    def _get_row(self, idx):
-        # linecache는 1-base index
-        line = linecache.getline(self.jsonl_path, idx + 1)
-        return json.loads(line)
+    def __len__(self):
+        """데이터셋의 전체 샘플 수를 반환합니다."""
+        return len(self.df)
 
     def __getitem__(self, idx):
-        row = self._get_row(idx)
-        img_path = self.image_dir.joinpath(*row["id"][:3], f"{row['id']}.jpg")
-        image = self.transform(Image.open(img_path).convert("RGB"))
-        token = self.tok(row["description"],
-                         padding="max_length",
-                         truncation=True,
-                         max_length=MAX_LEN,
-                         return_tensors="pt")
-        return image, token["input_ids"][0], token["attention_mask"][0]
+        """주어진 인덱스(idx)에 해당하는 샘플(이미지, 텍스트)을 반환합니다."""
+        # CSV 파일에서 이미지 ID와 설명을 가져옵니다.
+        image_id = self.df.iloc[idx]['id']
+        description = self.df.iloc[idx]['description']
 
-# ---------------------------
-# 3) 전처리 & DataLoader
-# ---------------------------
-tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")  # 다국어
-transform = transforms.Compose([
-    transforms.Resize(224, interpolation=transforms.InterpolationMode.BICUBIC),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
-                         std =[0.26862954, 0.26130258, 0.27577711]),
-])
-ds      = GLDStreamDataset(JSON_PATH, IMAGE_DIR, tokenizer, transform)
-loader  = DataLoader(ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
+        # GLDv2의 디렉토리 구조에 따라 이미지 경로를 구성합니다.
+        # 예: '4e7c3c4e083ee269' -> '4/e/7/4e7c3c4e083ee269.jpg'
+        image_path = os.path.join(self.image_dir, image_id[0], image_id[1], image_id[2], f"{image_id}.jpg")
+        
+        try:
+            # 이미지 파일을 열고 RGB로 변환합니다.
+            image = Image.open(image_path).convert("RGB")
+            # CLIP 모델의 전처리기를 적용합니다.
+            image_tensor = self.image_preprocess(image)
+        except FileNotFoundError:
+            print(f"Warning: Image file not found at {image_path}. Skipping.")
+            # 파일이 없을 경우, 빈 텐서와 빈 설명을 반환하여 배치 생성 시 걸러낼 수 있도록 합니다.
+            return None, None
 
-# ---------------------------
-# 4) 모델 로드
-# ---------------------------
-model, _, preprocess = open_clip.create_model_and_transforms(
-    model_name=MODEL_NAME, pretrained=PRETRAIN_DS, device=DEVICE
-)
-# 텍스트 토크나이저를 open_clip 포맷으로 맞추기 위해 래퍼 작성
-class HFTextEncoder(nn.Module):
-    def __init__(self, hf_tok, out_dim):
-        super().__init__()
-        self.tok = hf_tok
-        # 간단히 로지스틱 회귀 + 평균 임베딩 → 실제 연구용으로는 Transformer 재사용 권장
-        self.embed = nn.Embedding(hf_tok.vocab_size, out_dim)
+        return image_tensor, description
 
-    def forward(self, input_ids):
-        return self.embed(input_ids).mean(dim=1)  # (B, dim)
+# --- 3. 대조 손실 함수 (Contrastive Loss) ---
+# CLIP의 핵심 학습 목표인 InfoNCE 손실을 구현합니다. [8, 9]
+def contrastive_loss(image_features, text_features, logit_scale):
+    """
+    이미지와 텍스트 임베딩 간의 대조 손실을 계산합니다.
+    Args:
+        image_features (torch.Tensor): 이미지 임베딩 텐서.
+        text_features (torch.Tensor): 텍스트 임베딩 텐서.
+        logit_scale (torch.Tensor): 유사도 점수를 조절하는 학습 가능한 파라미터.
+    """
+    # 정규화된 임베딩 간의 코사인 유사도를 계산합니다.
+    logits_per_image = logit_scale * image_features @ text_features.T
+    logits_per_text = logits_per_image.T
 
-text_encoder = HFTextEncoder(tokenizer, model.text_projection.shape[0]).to(DEVICE)
+    # 배치 내에서 올바른 (이미지, 텍스트) 쌍을 찾기 위한 정답 레이블을 생성합니다.
+    # (0, 1, 2,..., batch_size-1)
+    batch_size = image_features.shape
+    ground_truth = torch.arange(batch_size, dtype=torch.long, device=Config.DEVICE)
 
-# 결합
-class SimpleCLIP(nn.Module):
-    def __init__(self, vision, text_enc, proj):
-        super().__init__()
-        self.vision = vision
-        self.text_enc = text_enc
-        self.text_proj = proj     # 이미 (dim, dim) 선형층 포함
+    # 이미지 기준 손실과 텍스트 기준 손실을 각각 계산하고 평균을 냅니다.
+    loss_img = F.cross_entropy(logits_per_image, ground_truth)
+    loss_txt = F.cross_entropy(logits_per_text, ground_truth)
+    total_loss = (loss_img + loss_txt) / 2
+    
+    return total_loss
 
-    def encode_image(self, image):
-        return model.encode_image(image)
+# --- 4. 학습 루프 ---
+def train_one_epoch(model, dataloader, optimizer, tokenizer, device):
+    model.train()
+    total_loss = 0.0
+    
+    # tqdm을 사용하여 진행 상황을 시각적으로 표시합니다.
+    pbar = tqdm(dataloader, desc="Training", leave=False)
+    for images, texts in pbar:
+        # 데이터 로딩 중 파일이 없는 경우를 처리합니다.
+        if images is None:
+            continue
+            
+        # 데이터를 지정된 장치(GPU/CPU)로 이동합니다.
+        images = images.to(device)
+        
+        # 텍스트를 토큰화하고 장치로 이동합니다. [10]
+        text_tokens = tokenizer(texts).to(device)
 
-    def encode_text(self, ids):
-        txt = self.text_enc(ids)                    # (B, dim)
-        # text_projection: (dim, proj_dim)  ⇒  matmul 로 투영
-        return F.linear(txt, self.text_proj.T)   # weight shape (proj_dim, dim) 필요시 전치
-
-    def forward(self, image, text_ids):
-        img_feat = self.encode_image(image)
-        txt_feat = self.encode_text(text_ids)
-        # 정규화
-        img_feat = img_feat / img_feat.norm(dim=-1, keepdim=True)
-        txt_feat = txt_feat / txt_feat.norm(dim=-1, keepdim=True)
-        return img_feat, txt_feat
-
-clip_model = SimpleCLIP(model.visual, text_encoder, model.text_projection).to(DEVICE)
-
-# ---------------------------
-# 5) 손실 · 옵티마이저
-# ---------------------------
-logit_scale = nn.Parameter(torch.ones([]) * math.log(1/0.07)).to(DEVICE)  # learnable temperature
-optimizer = torch.optim.AdamW(clip_model.parameters(), lr=LR, weight_decay=1e-3)
-
-def clip_loss(image_feats, text_feats):
-    temp = logit_scale.exp()
-    logits_per_img = image_feats @ text_feats.t() * temp
-    logits_per_txt = logits_per_img.t()
-    labels = torch.arange(len(image_feats), device=DEVICE)
-    loss_i2t = nn.functional.cross_entropy(logits_per_img, labels)
-    loss_t2i = nn.functional.cross_entropy(logits_per_txt, labels)
-    return (loss_i2t + loss_t2i) / 2
-
-# ---------------------------
-# 6) 학습 루프
-# ---------------------------
-for epoch in range(EPOCHS):
-    clip_model.train()
-    pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{EPOCHS}")
-    total_loss = 0
-    for imgs, ids, mask in pbar:
-        imgs  = imgs.to(DEVICE)
-        ids   = ids.to(DEVICE)
-
-        img_f, txt_f = clip_model(imgs, ids)
-        loss = clip_loss(img_f, txt_f)
-
+        # 모델의 순전파(forward pass)를 통해 이미지와 텍스트의 임베딩을 얻습니다.
+        image_features, text_features, logit_scale = model(images, text_tokens)
+        
+        # 손실을 계산합니다.
+        loss = contrastive_loss(image_features, text_features, logit_scale)
+        
+        # 역전파(backward pass) 및 가중치 업데이트 [11, 12]
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
+        
         total_loss += loss.item()
-        pbar.set_postfix(loss=total_loss / (pbar.n + 1e-9))
+        pbar.set_postfix({"loss": loss.item()})
+        
+    return total_loss / len(dataloader)
 
-    torch.save({
-        "epoch": epoch, "model": clip_model.state_dict(),
-        "logit_scale": logit_scale
-    }, f"checkpoint_epoch{epoch+1}.pt")
+# --- 5. 메인 실행 함수 ---
+def main():
+    print(f"Using device: {Config.DEVICE}")
+
+    # 1. 모델 및 전처리기 불러오기
+    print("Loading OpenCLIP model...")
+    # `open_clip.create_model_and_transforms`는 모델, 학습용 전처리기, 평가용 전처리기를 반환합니다.
+    # 파인튜닝 시에는 학습용 전처리기(데이터 증강 포함)를 사용하는 것이 좋습니다.
+    model, _, preprocess = open_clip.create_model_and_transforms(
+        Config.MODEL_NAME, 
+        pretrained=Config.PRETRAINED_WEIGHTS
+    )
+    model.to(Config.DEVICE)
+    
+    # 텍스트 토크나이저를 불러옵니다.
+    tokenizer = open_clip.get_tokenizer(Config.MODEL_NAME)
+    print("Model loaded.")
+
+    # 2. 데이터셋 및 데이터로더 준비
+    print("Preparing dataset...")
+    # collate_fn을 정의하여 데이터 로딩 중 발생할 수 있는 None 값을 처리합니다.
+    def collate_fn(batch):
+        batch = list(filter(lambda x: x is not None, batch))
+        if not batch:
+            return None, None
+        images, texts = zip(*batch)
+        images = torch.stack(images, dim=0)
+        return images, list(texts)
+
+    dataset = GLDv2CustomDataset(
+        image_dir=Config.IMAGE_DIR,
+        csv_path=Config.CSV_PATH,
+        image_preprocess=preprocess
+    )
+    
+    dataloader = DataLoader(
+        dataset,
+        batch_size=Config.BATCH_SIZE,
+        shuffle=True,
+        num_workers=Config.NUM_WORKERS,
+        collate_fn=collate_fn,
+        pin_memory=True
+    )
+    print(f"Dataset prepared with {len(dataset)} samples.")
+
+    # 3. 옵티마이저 설정
+    # AdamW 옵티마이저를 사용합니다. [13]
+    optimizer = torch.optim.AdamW(
+        model.parameters(), 
+        lr=Config.LEARNING_RATE, 
+        weight_decay=Config.WEIGHT_DECAY
+    )
+
+    # 4. 학습 시작
+    print("Starting training...")
+    for epoch in range(Config.EPOCHS):
+        avg_loss = train_one_epoch(model, dataloader, optimizer, tokenizer, Config.DEVICE)
+        print(f"Epoch {epoch+1}/{Config.EPOCHS}, Average Loss: {avg_loss:.4f}")
+
+    # 5. 학습된 모델 저장
+    save_path = f"./finetuned_gldv2_clip_{Config.MODEL_NAME}.pt"
+    torch.save(model.state_dict(), save_path)
+    print(f"Model fine-tuning complete. Saved to {save_path}")
+
+
+if __name__ == "__main__":
+    main()
