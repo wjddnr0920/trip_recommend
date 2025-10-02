@@ -72,7 +72,7 @@ def main():
     print(f"Using device: {device}")
 
     print("Loading CLIP model and processor...")
-    processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
+    processor = CLIPProcessor.from_pretrained(config['model']['model_id'])
     model = CLIPModel.from_pretrained(config['model']['model_id']).to(device)
     print("Model loaded.")
 
