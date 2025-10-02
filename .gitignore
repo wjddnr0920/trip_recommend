@@ -214,4 +214,5 @@ pyrightconfig.json
 data/
 notebook/
 .gitignore
-checkpoint/
+output/
+config.yaml
