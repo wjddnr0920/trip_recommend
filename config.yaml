@@ -1,0 +1,46 @@
+# --- 프로젝트 전반에 사용될 경로 설정 ---
+paths:
+  # 데이터셋 루트 디렉토리
+  gldv2_root: "/home/workspace/data/GLDv2"
+  
+  # 학습, 인덱싱, 테스트에 사용될 이미지 및 CSV 경로
+  train_image_dir: "/home/workspace/data/GLDv2/train/image"
+  train_csv_path: "/home/workspace/data/GLDv2/train/train_custom.csv"
+  
+  index_image_dir: "/home/workspace/data/GLDv2/index/image"
+  index_csv_path: "/home/workspace/data/GLDv2/index/index.csv"
+  
+  test_image_dir: "/home/workspace/data/GLDv2/test/image"
+  solution_csv_path: "/home/workspace/data/GLDv2/test/retrieval_solution_v2.1.csv"
+  
+  # 생성된 DB 및 모델 가중치를 저장할 출력 디렉토리
+  output_dir: "/home/workspace/output"
+
+# --- 모델 관련 설정 ---
+model:
+  # Hugging Face 모델 ID
+  model_id: 'openai/clip-vit-base-patch32'
+  # 임베딩 차원 (openai/clip-vit-base-patch32의 vision_model 출력은 768)
+  embedding_dim: 768
+  # 파인튜닝된 모델 가중치 경로 (필요 시 지정)
+  finetuned_path: null # 예: "./output/finetuned_model.pt"
+
+# --- 학습(Fine-tuning) 관련 하이퍼파라미터 ---
+training:
+  epochs: 5
+  batch_size: 16
+  learning_rate: 1.0e-6
+  weight_decay: 0.1
+
+# --- 검색(Retrieval) 관련 설정 ---
+retrieval:
+  # Faiss 검색 시 찾을 이웃의 수
+  num_neighbors: 100
+  # DB 생성 및 검색 시 사용할 배치 사이즈
+  batch_size: 64
+
+# --- 시스템 설정 ---
+system:
+  # 'auto'로 설정하면 코드가 자동으로 cuda/cpu를 결정
+  device: 'auto'
+  num_workers: 4
