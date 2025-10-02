@@ -47,7 +47,7 @@ def train_one_epoch(model, dataloader, optimizer, processor, device):
         if images is None:
             continue
         images = images.to(device)
-        inputs = processor(text=texts, return_tensors="pt", padding=True, truncation=True).to(device)
+        inputs = processor.tokenizer(text=texts, return_tensors="pt", padding=True, truncation=True).to(device)
         image_features = F.normalize(model.get_image_features(pixel_values=images), p=2, dim=-1)
         text_features = F.normalize(model.get_text_features(input_ids=inputs.input_ids, attention_mask=inputs.attention_mask), p=2, dim=-1)
         logit_scale = model.logit_scale.exp()
@@ -61,7 +61,7 @@ def train_one_epoch(model, dataloader, optimizer, processor, device):
 
 def main():
     # Load configuration from YAML file
-    with open('/home/workspace/config.yaml', 'r') as f:
+    with open('/home/workspace/config_custom.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
     # Determine device
@@ -72,7 +72,7 @@ def main():
     print(f"Using device: {device}")
 
     print("Loading CLIP model and processor...")
-    processor = CLIPProcessor.from_pretrained(config['model']['model_id'])
+    processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
     model = CLIPModel.from_pretrained(config['model']['model_id']).to(device)
     print("Model loaded.")
 
