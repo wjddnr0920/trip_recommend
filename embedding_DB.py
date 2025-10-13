@@ -28,11 +28,27 @@ class IndexDataset(Dataset):
         try:
             image = Image.open(img_path).convert("RGB")
             processed_image = self.processor(images=image, return_tensors="pt")['pixel_values'].squeeze(0)
+            return {"image": processed_image, "id": image_id}
         except FileNotFoundError:
-            image = Image.new('RGB', (224, 224), color='black')
-            processed_image = self.processor(images=image, return_tensors="pt")['pixel_values'].squeeze(0)
-            image_id = "file_not_found"
-        return {"image": processed_image, "id": image_id}
+            return None
+        
+# --- 추가한 함수 ---
+def collate_fn_skip_none(batch):
+    """
+    데이터 로딩 시 None인 샘플을 건너뛰고, 키를 사용해 명시적으로 데이터를 처리하는
+    안정적인 collate 함수
+    """
+    # 유효한 샘플(딕셔너리)만 필터링합니다.
+    batch = list(filter(lambda x: x is not None, batch))
+    if not batch:
+        return None
+    
+    # 'image'와 'id' 키를 직접 사용하여 데이터를 추출합니다.
+    # 이렇게 하면 __getitem__에서 딕셔너리 순서가 바뀌어도 안전합니다.
+    images = torch.stack([d['image'] for d in batch])
+    ids = [d['id'] for d in batch]
+    
+    return {"image": images, "id": ids}
 
 def create_database():
     with open('/home/workspace/config_custom.yaml', 'r') as f:
@@ -49,7 +65,6 @@ def create_database():
 
     print("Loading model and processor...")
     processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
-    
     model = CLIPModel.from_pretrained(config['model']['model_id']).to(device)
     
     finetuned_path = config['model']['finetuned_path']
@@ -66,36 +81,46 @@ def create_database():
         image_dir=config['paths']['index_image_dir'],
         processor=processor
     )
-    dataloader = DataLoader(dataset, batch_size=config['retrieval']['batch_size'], shuffle=False)
 
-    all_image_embeddings = []
+    # 커스텀 collate_fn을 DataLoader에 적용
+    dataloader = DataLoader(
+        dataset, 
+        batch_size=config['retrieval']['batch_size'], 
+        shuffle=False,
+        collate_fn=collate_fn_skip_none
+    )
+
+    # 모델에서 임베딩 차원을 동적으로 가져옴
+    embedding_dim = model.config.projection_dim
+    print(f"Embedding dimension detected from model config: {embedding_dim}")
+    
+    # Faiss 인덱스를 먼저 초기화
+    index = faiss.IndexFlatIP(embedding_dim)
     all_image_ids = []
+    
+    processed_count = 0
+    
     with torch.no_grad():
-        for batch in tqdm(dataloader, desc="Creating index image embeddings"):
+        for batch in tqdm(dataloader, desc="Creating and adding embeddings to Faiss index"):
+            # collate_fn에 의해 배치가 비어있을 수 있음
+            if batch is None:
+                continue
+
             images = batch['image'].to(device)
             image_ids = batch['id']
             
             with autocast(enabled=use_amp, device_type=device):
                 embeddings = model.get_image_features(pixel_values=images)
-                # --- L2-정규화 추가 ---
-                # Faiss에 추가하기 전에 벡터의 크기를 1로 만듭니다.
                 embeddings = F.normalize(embeddings, p=2, dim=-1)
             
-            all_image_embeddings.append(embeddings.cpu().float().numpy())
+            # 임베딩을 메모리에 쌓아두지 않고, 배치 단위로 Faiss 인덱스에 바로 추가
+            index.add(embeddings.cpu().float().numpy())
             all_image_ids.extend(image_ids)
+            processed_count += len(image_ids)
 
-    all_image_embeddings = np.vstack(all_image_embeddings)
-    print(f"Processed {len(all_image_ids)} images.")
-    print(f"Embedding matrix shape: {all_image_embeddings.shape}")
+    print(f"Successfully processed and indexed {processed_count} images.")
+    print(f"Total vectors in Faiss index: {index.ntotal}")
 
-    # --- 수정된 부분 ---
-    # 모델의 config에서 직접 임베딩 차원을 가져옵니다.
-    embedding_dim = model.config.projection_dim
-    print(f"Embedding dimension detected from model config: {embedding_dim}")
-
-    index = faiss.IndexFlatIP(embedding_dim)
-    index.add(all_image_embeddings)
-    
     faiss.write_index(index, os.path.join(output_dir, "image_features.index"))
     with open(os.path.join(output_dir, "image_ids.txt"), "w") as f:
         for image_id in all_image_ids:
@@ -105,4 +130,3 @@ def create_database():
 
 if __name__ == '__main__':
     create_database()
-
