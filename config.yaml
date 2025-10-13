@@ -20,8 +20,6 @@ paths:
 model:
   # Hugging Face 모델 ID
   model_id: 'openai/clip-vit-base-patch32'
-  # 임베딩 차원 (openai/clip-vit-base-patch32의 vision_model 출력은 768)
-  embedding_dim: 768
   # 파인튜닝된 모델 가중치 경로 (필요 시 지정)
   finetuned_path: null # 예: "./output/finetuned_model.pt"
 
