@@ -77,6 +77,9 @@ def create_database():
             
             with autocast(enabled=use_amp, device_type=device):
                 embeddings = model.get_image_features(pixel_values=images)
+                # --- L2-정규화 추가 ---
+                # Faiss에 추가하기 전에 벡터의 크기를 1로 만듭니다.
+                embeddings = F.normalize(embeddings, p=2, dim=-1)
             
             all_image_embeddings.append(embeddings.cpu().float().numpy())
             all_image_ids.extend(image_ids)
