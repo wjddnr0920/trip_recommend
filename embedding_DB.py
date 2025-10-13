@@ -106,7 +106,7 @@ def create_database():
             if batch is None:
                 continue
 
-            images = batch['image'].to(device)
+            images = batch['image'].to(device, non_blocking=True)
             image_ids = batch['id']
             
             with autocast(enabled=use_amp, device_type=device):

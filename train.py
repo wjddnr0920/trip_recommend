@@ -67,8 +67,10 @@ def train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use
     for images, texts in pbar:
         if images is None:
             continue
-        images = images.to(device)
-        inputs = processor.tokenizer(text=texts, return_tensors="pt", padding=True, truncation=True).to(device)
+        images = images.to(device, non_blocking=True)
+        inputs = processor.tokenizer(text=texts, return_tensors="pt", padding=True, truncation=True)
+        # 토큰화된 결과도 non_blocking으로 이동
+        inputs = {k: v.to(device, non_blocking=True) for k, v in inputs.items()}
 
         # autocast 컨텍스트 매니저: 이 블록 내의 연산을 자동으로 혼합 정밀도로 수행
         with autocast(enabled=use_amp, device_type=device):
