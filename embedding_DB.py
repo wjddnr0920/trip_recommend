@@ -42,7 +42,7 @@ def create_database():
     print(f"Using device: {device}")
     
     # --- 추가된 부분: 추론용 AMP 설정 확인 ---
-    use_amp = config['retrieval']['use_amp'] and device == 'cuda'
+    use_amp = config['retrieval']['use_amp']
     print(f"Inference with AMP is {'ENABLED' if use_amp else 'DISABLED'}")
 
     output_dir = config['paths']['output_dir']

@@ -102,7 +102,7 @@ def main():
     print(f"Using device: {device}")
 
     # --- 추가된 부분: AMP 설정 확인 ---
-    use_amp = config['training']['use_amp'] and device == 'cuda'
+    use_amp = config['training']['use_amp']
     print(f"Automatic Mixed Precision (AMP) is {'ENABLED' if use_amp else 'DISABLED'}")
 
     print("Loading CLIP model and processor...")
