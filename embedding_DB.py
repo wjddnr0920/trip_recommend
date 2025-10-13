@@ -36,7 +36,7 @@ class IndexDataset(Dataset):
 
 def create_database():
     # Load configuration from YAML file
-    with open('/home/workspace/config.yaml', 'r') as f:
+    with open('/home/workspace/config_custom.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
     # Determine device
@@ -51,12 +51,21 @@ def create_database():
 
     print("Loading model and processor...")
     processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
-    model = CLIPModel.from_pretrained(config['model']['model_id']).vision_model.to(device)
+
+    finetuned_path = config['model']['finetuned_path']
     
-    # 만약 파인튜닝된 모델 가중치를 사용하려면 아래 주석을 해제
-    # if config['model']['finetuned_path']:
-    #     model.load_state_dict(torch.load(config['model']['finetuned_path']))
-    #     print(f"Loaded fine-tuned weights from {config['model']['finetuned_path']}")
+    if finetuned_path and os.path.exists(finetuned_path):
+        print(f"Loading fine-tuned model from: {finetuned_path}")
+        # 1. 파인튜닝된 가중치를 로드하기 위해 전체 CLIPModel을 먼저 생성합니다.
+        model_to_load = CLIPModel.from_pretrained(config['model']['model_id'])
+        # 2. 전체 모델에 state_dict를 로드합니다. (키 이름이 일치하여 성공)
+        model_to_load.load_state_dict(torch.load(finetuned_path))
+        # 3. 필요한 vision_model 부분만 추출합니다.
+        model = model_to_load.vision_model.to(device)
+    else:
+        print("Fine-tuned model not found or path not specified. Using pre-trained weights.")
+        # 기존 방식: 사전 학습된 vision_model을 직접 로드합니다.
+        model = CLIPModel.from_pretrained(config['model']['model_id']).vision_model.to(device)
         
     model.eval()
 
