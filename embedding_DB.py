@@ -41,8 +41,7 @@ def create_database():
     device = "cuda" if torch.cuda.is_available() and config['system']['device'] == 'auto' else "cpu"
     print(f"Using device: {device}")
     
-    # --- 추가된 부분: 추론용 AMP 설정 확인 ---
-    use_amp = config['retrieval']['use_amp']
+    use_amp = config['retrieval']['use_amp'] and device == 'cuda'
     print(f"Inference with AMP is {'ENABLED' if use_amp else 'DISABLED'}")
 
     output_dir = config['paths']['output_dir']
@@ -51,15 +50,14 @@ def create_database():
     print("Loading model and processor...")
     processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
     
+    model = CLIPModel.from_pretrained(config['model']['model_id']).to(device)
+    
     finetuned_path = config['model']['finetuned_path']
     if finetuned_path and os.path.exists(finetuned_path):
         print(f"Loading fine-tuned model from: {finetuned_path}")
-        model_to_load = CLIPModel.from_pretrained(config['model']['model_id'])
-        model_to_load.load_state_dict(torch.load(finetuned_path))
-        model = model_to_load.vision_model.to(device)
+        model.load_state_dict(torch.load(finetuned_path))
     else:
         print("Fine-tuned model not found. Using pre-trained weights.")
-        model = CLIPModel.from_pretrained(config['model']['model_id']).vision_model.to(device)
         
     model.eval()
 
@@ -77,13 +75,9 @@ def create_database():
             images = batch['image'].to(device)
             image_ids = batch['id']
             
-            # --- 수정된 부분: autocast 컨텍스트 적용 ---
-            # 이 블록 안의 연산이 자동으로 float16으로 수행됩니다.
             with autocast(enabled=use_amp, device_type=device):
-                outputs = model(pixel_values=images)
-                embeddings = F.normalize(outputs.pooler_output, p=2, dim=-1)
+                embeddings = model.get_image_features(pixel_values=images)
             
-            # CPU로 옮기기 전에 float32로 다시 변환해주는 것이 안정적일 수 있습니다.
             all_image_embeddings.append(embeddings.cpu().float().numpy())
             all_image_ids.extend(image_ids)
 
@@ -91,7 +85,11 @@ def create_database():
     print(f"Processed {len(all_image_ids)} images.")
     print(f"Embedding matrix shape: {all_image_embeddings.shape}")
 
-    embedding_dim = config['model']['embedding_dim']
+    # --- 수정된 부분 ---
+    # 모델의 config에서 직접 임베딩 차원을 가져옵니다.
+    embedding_dim = model.config.projection_dim
+    print(f"Embedding dimension detected from model config: {embedding_dim}")
+
     index = faiss.IndexFlatIP(embedding_dim)
     index.add(all_image_embeddings)
     
@@ -104,3 +102,4 @@ def create_database():
 
 if __name__ == '__main__':
     create_database()
+
