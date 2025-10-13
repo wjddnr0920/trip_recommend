@@ -8,6 +8,11 @@ from PIL import Image
 from tqdm import tqdm
 from transformers import CLIPProcessor, CLIPModel
 
+# --- 경고 해결을 위한 코드 추가 ---
+# DataLoader의 멀티 프로세싱과 충돌을 방지하기 위해 
+# 토크나이저의 병렬 처리를 비활성화합니다.
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # --- Config Class Removed ---
 
 class GLDv2CustomDataset(Dataset):
