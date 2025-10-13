@@ -31,6 +31,9 @@ training:
   batch_size: 16
   learning_rate: 1.0e-6
   weight_decay: 0.1
+  # AMP(Automatic Mixed Precision) 사용 여부. 
+  # True로 설정하면 AMP 사용.
+  use_amp: true 
 
 # --- 검색(Retrieval) 관련 설정 ---
 retrieval:
@@ -44,3 +47,4 @@ system:
   # 'auto'로 설정하면 코드가 자동으로 cuda/cpu를 결정
   device: 'auto'
   num_workers: 4
+  seed: 42
