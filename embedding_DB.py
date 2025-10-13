@@ -9,7 +9,7 @@ from tqdm import tqdm
 import faiss
 import numpy as np
 from transformers import CLIPProcessor, CLIPModel
-
+from torch.amp import autocast
 # --- Config Class Removed ---
 
 class IndexDataset(Dataset):
@@ -35,36 +35,30 @@ class IndexDataset(Dataset):
         return {"image": processed_image, "id": image_id}
 
 def create_database():
-    # Load configuration from YAML file
     with open('/home/workspace/config_custom.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
-    # Determine device
-    if config['system']['device'] == 'auto':
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    else:
-        device = config['system']['device']
+    device = "cuda" if torch.cuda.is_available() and config['system']['device'] == 'auto' else "cpu"
     print(f"Using device: {device}")
     
+    # --- 추가된 부분: 추론용 AMP 설정 확인 ---
+    use_amp = config['retrieval']['use_amp'] and device == 'cuda'
+    print(f"Inference with AMP is {'ENABLED' if use_amp else 'DISABLED'}")
+
     output_dir = config['paths']['output_dir']
     os.makedirs(output_dir, exist_ok=True)
 
     print("Loading model and processor...")
     processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
-
-    finetuned_path = config['model']['finetuned_path']
     
+    finetuned_path = config['model']['finetuned_path']
     if finetuned_path and os.path.exists(finetuned_path):
         print(f"Loading fine-tuned model from: {finetuned_path}")
-        # 1. 파인튜닝된 가중치를 로드하기 위해 전체 CLIPModel을 먼저 생성합니다.
         model_to_load = CLIPModel.from_pretrained(config['model']['model_id'])
-        # 2. 전체 모델에 state_dict를 로드합니다. (키 이름이 일치하여 성공)
         model_to_load.load_state_dict(torch.load(finetuned_path))
-        # 3. 필요한 vision_model 부분만 추출합니다.
         model = model_to_load.vision_model.to(device)
     else:
-        print("Fine-tuned model not found or path not specified. Using pre-trained weights.")
-        # 기존 방식: 사전 학습된 vision_model을 직접 로드합니다.
+        print("Fine-tuned model not found. Using pre-trained weights.")
         model = CLIPModel.from_pretrained(config['model']['model_id']).vision_model.to(device)
         
     model.eval()
@@ -82,9 +76,15 @@ def create_database():
         for batch in tqdm(dataloader, desc="Creating index image embeddings"):
             images = batch['image'].to(device)
             image_ids = batch['id']
-            outputs = model(pixel_values=images)
-            embeddings = F.normalize(outputs.pooler_output, p=2, dim=-1)
-            all_image_embeddings.append(embeddings.cpu().numpy())
+            
+            # --- 수정된 부분: autocast 컨텍스트 적용 ---
+            # 이 블록 안의 연산이 자동으로 float16으로 수행됩니다.
+            with autocast(enabled=use_amp, device_type=device):
+                outputs = model(pixel_values=images)
+                embeddings = F.normalize(outputs.pooler_output, p=2, dim=-1)
+            
+            # CPU로 옮기기 전에 float32로 다시 변환해주는 것이 안정적일 수 있습니다.
+            all_image_embeddings.append(embeddings.cpu().float().numpy())
             all_image_ids.extend(image_ids)
 
     all_image_embeddings = np.vstack(all_image_embeddings)
@@ -104,4 +104,3 @@ def create_database():
 
 if __name__ == '__main__':
     create_database()
-
