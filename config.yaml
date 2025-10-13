@@ -41,7 +41,7 @@ retrieval:
   num_neighbors: 100
   # DB 생성 및 검색 시 사용할 배치 사이즈
   batch_size: 64
-
+  use_amp: true
 # --- 시스템 설정 ---
 system:
   # 'auto'로 설정하면 코드가 자동으로 cuda/cpu를 결정
