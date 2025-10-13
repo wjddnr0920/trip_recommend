@@ -7,11 +7,26 @@ from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from tqdm import tqdm
 from transformers import CLIPProcessor, CLIPModel
+import numpy as np
+import random
+from torch.amp import GradScaler, autocast
 
 # --- 경고 해결을 위한 코드 추가 ---
 # DataLoader의 멀티 프로세싱과 충돌을 방지하기 위해 
 # 토크나이저의 병렬 처리를 비활성화합니다.
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# --- 추가된 함수: 시드 고정 ---
+def set_seed(seed):
+    """실험 재현성을 위해 랜덤 시드를 고정하는 함수"""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        # CUDNN 설정 (재현성에 영향을 줄 수 있음)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 # --- Config Class Removed ---
 
@@ -44,7 +59,8 @@ def contrastive_loss(image_features, text_features, logit_scale):
     loss_txt = F.cross_entropy(logits_per_text, ground_truth)
     return (loss_img + loss_txt) / 2
 
-def train_one_epoch(model, dataloader, optimizer, processor, device):
+# --- 수정된 함수: 학습 루프에 AMP 로직 추가 ---
+def train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use_amp):
     model.train()
     total_loss = 0.0
     pbar = tqdm(dataloader, desc="Training", leave=False)
@@ -53,28 +69,41 @@ def train_one_epoch(model, dataloader, optimizer, processor, device):
             continue
         images = images.to(device)
         inputs = processor.tokenizer(text=texts, return_tensors="pt", padding=True, truncation=True).to(device)
-        image_features = F.normalize(model.get_image_features(pixel_values=images), p=2, dim=-1)
-        text_features = F.normalize(model.get_text_features(input_ids=inputs.input_ids, attention_mask=inputs.attention_mask), p=2, dim=-1)
-        logit_scale = model.logit_scale.exp()
-        loss = contrastive_loss(image_features, text_features, logit_scale)
+
+        # autocast 컨텍스트 매니저: 이 블록 내의 연산을 자동으로 혼합 정밀도로 수행
+        with autocast(enabled=use_amp, device_type=device):
+            image_features = F.normalize(model.get_image_features(pixel_values=images), p=2, dim=-1)
+            text_features = F.normalize(model.get_text_features(input_ids=inputs.input_ids, attention_mask=inputs.attention_mask), p=2, dim=-1)
+            logit_scale = model.logit_scale.exp()
+            loss = contrastive_loss(image_features, text_features, logit_scale)
+
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        
+        # GradScaler를 사용하여 스케일링된 손실로 역전파
+        scaler.scale(loss).backward()
+        # 스케일링된 그래디언트로 옵티마이저 업데이트
+        scaler.step(optimizer)
+        # 다음 반복을 위해 스케일러 업데이트
+        scaler.update()
+
         total_loss += loss.item()
         pbar.set_postfix({"loss": loss.item()})
     return total_loss / len(dataloader)
 
 def main():
-    # Load configuration from YAML file
     with open('/home/workspace/config_custom.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
-    # Determine device
-    if config['system']['device'] == 'auto':
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    else:
-        device = config['system']['device']
+    # --- 추가된 부분: 시드 고정 함수 호출 ---
+    set_seed(config['system']['seed'])
+    print(f"Random seed set to {config['system']['seed']}")
+
+    device = "cuda" if torch.cuda.is_available() and config['system']['device'] == 'auto' else "cpu"
     print(f"Using device: {device}")
+
+    # --- 추가된 부분: AMP 설정 확인 ---
+    use_amp = config['training']['use_amp'] and device == 'cuda'
+    print(f"Automatic Mixed Precision (AMP) is {'ENABLED' if use_amp else 'DISABLED'}")
 
     print("Loading CLIP model and processor...")
     processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
@@ -107,10 +136,15 @@ def main():
         lr=config['training']['learning_rate'], 
         weight_decay=config['training']['weight_decay']
     )
+    
+    # --- 추가된 부분: GradScaler 초기화 ---
+    # enabled=False로 설정하면 scaler의 모든 연산이 비활성화(no-op)됩니다.
+    scaler = GradScaler(enabled=use_amp)
 
     print("Starting training...")
     for epoch in range(config['training']['epochs']):
-        avg_loss = train_one_epoch(model, dataloader, optimizer, processor, device)
+        # --- 수정된 부분: 학습 함수에 scaler와 use_amp 전달 ---
+        avg_loss = train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use_amp)
         print(f"Epoch {epoch+1}/{config['training']['epochs']}, Average Loss: {avg_loss:.4f}")
     
     os.makedirs(config['paths']['output_dir'], exist_ok=True)
