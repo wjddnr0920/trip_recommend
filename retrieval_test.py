@@ -12,6 +12,7 @@ import faiss
 import numpy as np
 from transformers import CLIPProcessor, CLIPModel
 from torch.amp import autocast
+import pickle
 
 class TestDataset(Dataset):
     def __init__(self, df, image_dir, processor):
@@ -95,9 +96,11 @@ def perform_retrieval():
     model.eval()
 
     output_dir = config['paths']['output_dir']
+    # 1. 통합된 인덱스 파일 로드
     index = faiss.read_index(os.path.join(output_dir, "image_features.index"))
-    with open(os.path.join(output_dir, "image_ids.txt"), 'r') as f:
-        index_image_ids = [line.strip() for line in f.readlines()]
+    # 2. ID 매핑 파일 로드
+    with open(os.path.join(output_dir, "id_map.pkl"), 'rb') as f:
+        id_map = pickle.load(f)
     print(f"Loading complete. Index contains {index.ntotal} vectors.")
 
     solution_df = pd.read_csv(config['paths']['solution_csv_path'])
@@ -113,37 +116,33 @@ def perform_retrieval():
     
     # K 값을 Faiss 인덱스의 전체 벡터 수보다 크지 않도록 안전하게 조정
     num_neighbors = min(config['retrieval']['num_neighbors'], index.ntotal)
-    if num_neighbors != config['retrieval']['num_neighbors']:
-        print(f"Warning: num_neighbors adjusted from {config['retrieval']['num_neighbors']} to {num_neighbors} to match index size.")
-
-    all_test_ids, all_retrieved_indices = [], []
+    
+    all_test_ids, all_retrieved_int_ids = [], []
     with torch.no_grad():
-        for batch in tqdm(test_dataloader, desc="Performing retrieval on test images"):
-            if batch is None:
-                continue
-
+        for batch in tqdm(test_dataloader, desc="Performing retrieval"):
+            if batch is None: continue
             images = batch['image'].to(device, non_blocking=True)
             test_ids = batch['id']
             
-            with autocast(enabled=use_amp, device_type=device):
+            with autocast(enabled=use_amp):
                 query_embeddings = model.get_image_features(pixel_values=images)
                 query_embeddings = F.normalize(query_embeddings, p=2, dim=-1)
 
-            # 안전하게 조정한 num_neighbors 값을 사용
-            _, neighbor_indices = index.search(query_embeddings.cpu().float().numpy(), num_neighbors)
+            # `search`는 이제 순차 인덱스가 아닌, '정수 ID'를 직접 반환
+            _, neighbor_int_ids = index.search(query_embeddings.cpu().float().numpy(), num_neighbors)
             
             all_test_ids.extend(test_ids)
-            all_retrieved_indices.extend(neighbor_indices)
+            all_retrieved_int_ids.extend(neighbor_int_ids)
 
-    # Faiss가 반환할 수 있는 -1 인덱스를 필터링하여 안정성 확보
+    # 3. ID 맵을 사용하여 정수 ID를 원래의 문자열 ID로 변환
     predictions = {}
-    for test_id, indices in zip(all_test_ids, all_retrieved_indices):
-        predictions[test_id] = [index_image_ids[i] for i in indices if i != -1]
+    for test_id, int_ids in zip(all_test_ids, all_retrieved_int_ids):
+        # -1 인덱스(결과 없음)는 안전하게 필터링
+        predictions[test_id] = [id_map[i] for i in int_ids if i != -1]
         
     print("\nEvaluating performance...")
     gap_score = calculate_gap(predictions, ground_truth)
     print(f"Global Average Precision (GAP) @{num_neighbors}: {gap_score:.4f}")
 
 if __name__ == '__main__':
-    # ... (파일 존재 여부 확인 로직은 이전과 동일) ...
     perform_retrieval()

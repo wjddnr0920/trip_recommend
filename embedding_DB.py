@@ -10,7 +10,7 @@ import faiss
 import numpy as np
 from transformers import CLIPProcessor, CLIPModel
 from torch.amp import autocast
-# --- Config Class Removed ---
+import pickle
 
 class IndexDataset(Dataset):
     def __init__(self, csv_path, image_dir, processor):
@@ -55,11 +55,7 @@ def create_database():
         config = yaml.safe_load(f)
 
     device = "cuda" if torch.cuda.is_available() and config['system']['device'] == 'auto' else "cpu"
-    print(f"Using device: {device}")
-    
     use_amp = config['retrieval']['use_amp'] and device == 'cuda'
-    print(f"Inference with AMP is {'ENABLED' if use_amp else 'DISABLED'}")
-
     output_dir = config['paths']['output_dir']
     os.makedirs(output_dir, exist_ok=True)
 
@@ -67,66 +63,59 @@ def create_database():
     processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
     model = CLIPModel.from_pretrained(config['model']['model_id']).to(device)
     
-    finetuned_path = config['model']['finetuned_path']
+    finetuned_path = config['model'].get('finetuned_path')
     if finetuned_path and os.path.exists(finetuned_path):
-        print(f"Loading fine-tuned model from: {finetuned_path}")
         model.load_state_dict(torch.load(finetuned_path))
+        print(f"Loaded fine-tuned model from: {finetuned_path}")
     else:
-        print("Fine-tuned model not found. Using pre-trained weights.")
-        
+        print("Using pre-trained weights.")
     model.eval()
 
-    dataset = IndexDataset(
-        csv_path=config['paths']['index_csv_path'],
-        image_dir=config['paths']['index_image_dir'],
-        processor=processor
-    )
+    dataset = IndexDataset(csv_path=config['paths']['index_csv_path'], image_dir=config['paths']['index_image_dir'], processor=processor)
+    dataloader = DataLoader(dataset, batch_size=config['retrieval']['batch_size'], shuffle=False, collate_fn=collate_fn_skip_none)
 
-    # 커스텀 collate_fn을 DataLoader에 적용
-    dataloader = DataLoader(
-        dataset, 
-        batch_size=config['retrieval']['batch_size'], 
-        shuffle=False,
-        collate_fn=collate_fn_skip_none
-    )
-
-    # 모델에서 임베딩 차원을 동적으로 가져옴
     embedding_dim = model.config.projection_dim
-    print(f"Embedding dimension detected from model config: {embedding_dim}")
+    print(f"Embedding dimension: {embedding_dim}")
+
+    # 1. 기본 인덱스(내적 유사도)를 생성합니다.
+    base_index = faiss.IndexFlatIP(embedding_dim)
+    # 2. IndexIDMap으로 기본 인덱스를 감싸서, 커스텀 ID를 사용할 수 있도록 합니다.
+    index = faiss.IndexIDMap(base_index)
     
-    # Faiss 인덱스를 먼저 초기화
-    index = faiss.IndexFlatIP(embedding_dim)
-    all_image_ids = []
-    
+    id_map = {} # {정수 ID: 문자열 ID}를 저장할 딕셔너리
     processed_count = 0
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Creating and adding embeddings to Faiss index"):
-            # collate_fn에 의해 배치가 비어있을 수 있음
-            if batch is None:
-                continue
+            if batch is None: continue
 
             images = batch['image'].to(device, non_blocking=True)
-            image_ids = batch['id']
+            str_image_ids = batch['id']
             
             with autocast(enabled=use_amp, device_type=device):
                 embeddings = model.get_image_features(pixel_values=images)
                 embeddings = F.normalize(embeddings, p=2, dim=-1)
             
-            # 임베딩을 메모리에 쌓아두지 않고, 배치 단위로 Faiss 인덱스에 바로 추가
-            index.add(embeddings.cpu().float().numpy())
-            all_image_ids.extend(image_ids)
-            processed_count += len(image_ids)
+            # 16진수 문자열 ID를 64비트 정수 ID로 변환
+            int_image_ids = np.array([int(s_id, 16) for s_id in str_image_ids]).astype('uint64')
+
+            # `add` 대신 `add_with_ids`를 사용하여 (벡터, ID) 쌍을 인덱스에 추가
+            index.add_with_ids(embeddings.cpu().float().numpy(), int_image_ids)
+            
+            # 나중을 위해 ID 매핑 정보 저장
+            for str_id, int_id in zip(str_image_ids, int_image_ids):
+                id_map[int_id] = str_id
+                
+            processed_count += len(str_image_ids)
 
     print(f"Successfully processed and indexed {processed_count} images.")
-    print(f"Total vectors in Faiss index: {index.ntotal}")
-
+    
+    # 3. 하나의 인덱스 파일과 ID 맵 파일을 저장합니다.
     faiss.write_index(index, os.path.join(output_dir, "image_features.index"))
-    with open(os.path.join(output_dir, "image_ids.txt"), "w") as f:
-        for image_id in all_image_ids:
-            f.write(f"{image_id}\n")
+    with open(os.path.join(output_dir, "id_map.pkl"), "wb") as f:
+        pickle.dump(id_map, f)
             
-    print(f"Faiss index and ID list saved to '{output_dir}'")
+    print(f"Faiss index (with IDs) and ID map saved to '{output_dir}'")
 
 if __name__ == '__main__':
     create_database()
