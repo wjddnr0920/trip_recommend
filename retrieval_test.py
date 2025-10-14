@@ -124,7 +124,7 @@ def perform_retrieval():
             images = batch['image'].to(device, non_blocking=True)
             test_ids = batch['id']
             
-            with autocast(enabled=use_amp):
+            with autocast(enabled=use_amp, device_type=device):
                 query_embeddings = model.get_image_features(pixel_values=images)
                 query_embeddings = F.normalize(query_embeddings, p=2, dim=-1)
 
@@ -137,8 +137,10 @@ def perform_retrieval():
     # 3. ID 맵을 사용하여 정수 ID를 원래의 문자열 ID로 변환
     predictions = {}
     for test_id, int_ids in zip(all_test_ids, all_retrieved_int_ids):
-        # -1 인덱스(결과 없음)는 안전하게 필터링
-        predictions[test_id] = [id_map[i] for i in int_ids if i != -1]
+        # Faiss가 반환한 (잠재적 음수) int64 배열을 uint64로 재해석
+        uint_ids = np.array(int_ids, dtype=np.uint64)
+        
+        predictions[test_id] = [id_map[i.item()] for i in uint_ids if i != -1]
         
     print("\nEvaluating performance...")
     gap_score = calculate_gap(predictions, ground_truth)
