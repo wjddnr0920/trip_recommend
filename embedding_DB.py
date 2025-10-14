@@ -104,7 +104,7 @@ def create_database():
             
             # 나중을 위해 ID 매핑 정보 저장
             for str_id, int_id in zip(str_image_ids, int_image_ids):
-                id_map[int_id] = str_id
+                id_map[int_id.item()] = str_id # .item()으로 순수 파이썬 int로 변환
                 
             processed_count += len(str_image_ids)
 
