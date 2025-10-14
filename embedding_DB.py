@@ -102,7 +102,6 @@ def create_database():
             # `add` 대신 `add_with_ids`를 사용하여 (벡터, ID) 쌍을 인덱스에 추가
             index.add_with_ids(embeddings.cpu().float().numpy(), int_image_ids)
             
-            # 나중을 위해 ID 매핑 정보 저장
             for str_id, int_id in zip(str_image_ids, int_image_ids):
                 id_map[int_id.item()] = str_id # .item()으로 순수 파이썬 int로 변환
                 
