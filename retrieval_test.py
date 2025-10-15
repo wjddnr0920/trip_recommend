@@ -42,8 +42,8 @@ def collate_fn_skip_none(batch):
     ids = [d['id'] for d in batch]
     return {"image": images, "id": ids}
 
-def calculate_gap(predictions, ground_truth):
-    """Global Average Precision (GAP)을 계산하는 함수"""
+def calculate_map(predictions, ground_truth):
+    """mean Average Precision (mAP)을 계산하는 함수"""
     total_average_precision = 0.0
     # 유효한 쿼리(정답이 있는 쿼리)의 개수를 세기 위한 카운터
     valid_queries_count = 0
@@ -143,8 +143,8 @@ def perform_retrieval():
         predictions[test_id] = [id_map[i.item()] for i in uint_ids if i != -1]
         
     print("\nEvaluating performance...")
-    gap_score = calculate_gap(predictions, ground_truth)
-    print(f"Global Average Precision (GAP) @{num_neighbors}: {gap_score:.4f}")
+    map_score = calculate_map(predictions, ground_truth)
+    print(f"mean Average Precision (mAP) @{num_neighbors}: {map_score:.4f}")
 
 if __name__ == '__main__':
     perform_retrieval()
