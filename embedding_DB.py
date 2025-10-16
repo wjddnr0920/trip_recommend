@@ -44,8 +44,8 @@ class DALIPipeline(Pipeline):
             images,
             dtype=output_dtype,
             crop=(self.crop_size, self.crop_size), # 중앙 크롭 수행
-            mean=self.mean,
-            std=self.std,
+            mean=[m * 255.0 for m in self.mean],  # 0-1 → 0-255 보정
+            std=[s * 255.0 for s in self.std],
             output_layout="CHW"
         )
         return images, labels
