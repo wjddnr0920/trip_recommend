@@ -17,36 +17,37 @@ from nvidia.dali.plugin.pytorch import DALIClassificationIterator, LastBatchPoli
 
 # --- 수정된 DALI 파이프라인 ---
 class DALIPipeline(Pipeline):
-    # __init__에서 더 이상 processor를 받지 않아도 됩니다.
     def __init__(self, image_paths, batch_size, num_threads, device_id, processor):
         super(DALIPipeline, self).__init__(batch_size, num_threads, device_id, seed=12)
         
-        # image_paths 리스트를 직접 파이프라인의 속성으로 저장
         self.image_paths = image_paths
         
-        # Processor 객체로부터 전처리 값을 동적으로 설정
-        self.mean = processor.image_processor.image_mean
-        self.std = processor.image_processor.image_std
-        self.image_size = processor.image_processor.crop_size['height']
+        # Processor로부터 모든 전처리 값을 동적으로 설정
+        image_proc = processor.image_processor
+        self.mean = image_proc.image_mean
+        self.std = image_proc.image_std
+        # --- 수정된 부분: 리사이즈와 크롭 사이즈를 별도로 가져옴 ---
+        self.resize_size = image_proc.size['shortest_edge']
+        self.crop_size = image_proc.crop_size['height']
 
     def define_graph(self):
-        # --- 수정된 부분: fn.external_source 제거 ---
-        # fn.readers.file이 직접 파일 목록을 읽고, 각 파일에 0부터 시작하는 레이블(인덱스)을 부여합니다.
-        # 이 레이블을 사용하여 나중에 원본 ID를 찾습니다.
-        jpegs, labels = fn.readers.file(
-            files=self.image_paths,
-            name="file_reader" # 경고 메시지를 해결하기 위해 리더에 이름을 부여
-        )
-        
+        jpegs, labels = fn.readers.file(files=self.image_paths, name="file_reader")
         images = fn.decoders.image(jpegs, device="mixed")
-        images = fn.resize(images, resize_x=self.image_size, resize_y=self.image_size)
+
+        # --- 수정된 부분: CLIPProcessor의 전처리 순서를 정확히 모방 ---
+        # 1. 리사이즈: 이미지의 짧은 쪽을 self.resize_size로 맞추고, 가로세로 비율 유지
+        images = fn.resize(images, resize_shorter=self.resize_size)
         
         output_dtype = types.FLOAT16 if use_amp else types.FLOAT
+        # 2. 중앙 크롭 & 정규화: 리사이즈된 이미지의 중앙에서 (crop_size, crop_size)로 잘라내고 정규화
         images = fn.crop_mirror_normalize(
-            images, dtype=output_dtype, mean=self.mean,
-            std=self.std, output_layout="CHW"
+            images,
+            dtype=output_dtype,
+            crop=(self.crop_size, self.crop_size), # 중앙 크롭 수행
+            mean=self.mean,
+            std=self.std,
+            output_layout="CHW"
         )
-        # 이미지뿐만 아니라, 원본 순서를 찾기 위한 'labels'도 함께 반환
         return images, labels
 
 def create_database():
