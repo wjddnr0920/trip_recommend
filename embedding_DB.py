@@ -3,7 +3,6 @@ import yaml
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from PIL import Image
 from tqdm import tqdm
 import faiss
 import numpy as np
@@ -19,17 +18,16 @@ from nvidia.dali.plugin.pytorch import DALIClassificationIterator, LastBatchPoli
 # --- 수정된 DALI 파이프라인 ---
 class DALIPipeline(Pipeline):
     # __init__에서 더 이상 processor를 받지 않아도 됩니다.
-    def __init__(self, image_paths, batch_size, num_threads, device_id):
+    def __init__(self, image_paths, batch_size, num_threads, device_id, processor):
         super(DALIPipeline, self).__init__(batch_size, num_threads, device_id, seed=12)
         
         # image_paths 리스트를 직접 파이프라인의 속성으로 저장
         self.image_paths = image_paths
         
-        # CLIP의 전처리 값은 하드코딩하거나 config에서 읽어올 수 있습니다.
-        # (openai/clip-vit-base-patch32 기준)
-        self.mean = [0.48145466, 0.4578275, 0.40821073]
-        self.std = [0.26862954, 0.26130258, 0.27577711]
-        self.image_size = 224
+        # Processor 객체로부터 전처리 값을 동적으로 설정
+        self.mean = processor.image_processor.image_mean
+        self.std = processor.image_processor.image_std
+        self.image_size = processor.image_processor.crop_size['height']
 
     def define_graph(self):
         # --- 수정된 부분: fn.external_source 제거 ---
@@ -68,7 +66,8 @@ def create_database():
     output_dir = config['paths']['output_dir']
     os.makedirs(output_dir, exist_ok=True)
 
-    print("Loading model...")
+    print("Loading model and processor...")
+    processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
     model = CLIPModel.from_pretrained(config['model']['model_id']).to(device)
     finetuned_path = config['model'].get('finetuned_path')
     if finetuned_path and os.path.exists(finetuned_path):
@@ -86,8 +85,11 @@ def create_database():
             valid_ids.append(row['id'])
 
     pipeline = DALIPipeline(
-        image_paths=valid_paths, batch_size=config['retrieval']['batch_size'],
-        num_threads=config['system']['num_workers'], device_id=device_id
+        image_paths=valid_paths, 
+        batch_size=config['retrieval']['batch_size'],
+        num_threads=config['system']['num_workers'], 
+        device_id=device_id,
+        processor=processor
     )
     pipeline.build()
 
