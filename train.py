@@ -67,8 +67,8 @@ class DALITrainPipeline(Pipeline):
         images = fn.crop_mirror_normalize(
             images,
             dtype=output_dtype,
-            mean=self.mean,
-            std=self.std,
+            mean=[m * 255.0 for m in self.mean],  # 0-1 → 0-255 보정
+            std=[s * 255.0 for s in self.std],
             output_layout="CHW"
         )
         return images, labels
