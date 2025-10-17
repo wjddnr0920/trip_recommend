@@ -65,7 +65,7 @@ def contrastive_loss(image_features, text_features, logit_scale):
 def train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use_amp, valid_texts):
     model.train()
     total_loss = 0.0
-    pbar = tqdm(dataloader, desc="Training with DALI", leave=False)
+    pbar = tqdm(dataloader, desc="Training with DALI", leave=True)
     for batch in pbar:
         images, labels = batch[0]['data'], batch[0]['label'].squeeze(-1).long().tolist()
         texts = [valid_texts[i] for i in labels]
