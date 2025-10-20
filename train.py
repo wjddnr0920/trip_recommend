@@ -6,7 +6,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-from transformers import CLIPProcessor, CLIPModel
+from transformers import AutoProcessor, AutoModel
 import numpy as np
 import random
 from torch.amp import GradScaler, autocast
@@ -106,8 +106,8 @@ def main():
     print(f"Using device: {device}, AMP: {'ENABLED' if use_amp else 'DISABLED'}")
 
     print("Loading CLIP model and processor...")
-    processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
-    model = CLIPModel.from_pretrained(config['model']['model_id']).to(device)
+    processor = AutoProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
+    model = AutoModel.from_pretrained(config['model']['model_id']).to(device)
     print("Model loaded.")
 
     print("Preparing DALI pipeline for training...")

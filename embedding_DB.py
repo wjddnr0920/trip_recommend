@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import faiss
 import numpy as np
-from transformers import CLIPProcessor, CLIPModel
+from transformers import AutoProcessor, AutoModel
 from torch.amp import autocast
 import pickle
 
@@ -62,8 +62,8 @@ def create_database():
     os.makedirs(output_dir, exist_ok=True)
 
     print("Loading model and processor...")
-    processor = CLIPProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
-    model = CLIPModel.from_pretrained(config['model']['model_id']).to(device)
+    processor = AutoProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
+    model = AutoModel.from_pretrained(config['model']['model_id']).to(device)
     finetuned_path = config['model'].get('finetuned_path')
     if finetuned_path and os.path.exists(finetuned_path):
         model.load_state_dict(torch.load(finetuned_path))
