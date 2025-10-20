@@ -22,8 +22,6 @@ def set_seed(seed):
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
 
 class DALITrainPipeline(Pipeline):
     """학습을 위한 DALI 파이프라인 (데이터 증강 포함)"""
@@ -42,7 +40,7 @@ class DALITrainPipeline(Pipeline):
         images = fn.resize(images, size=self.crop_size)
         do_flip = fn.random.coin_flip(probability=0.5)
         images = fn.flip(images, horizontal=do_flip)
-        output_dtype = types.FLOAT16 if use_amp else types.FLOAT
+        output_dtype = types.FLOAT
         
         # 정규화 시 0-255 스케일 보정
         images = fn.crop_mirror_normalize(
@@ -53,19 +51,11 @@ class DALITrainPipeline(Pipeline):
         )
         return images, labels
 
-def contrastive_loss(image_features, text_features, logit_scale):
-    logits_per_image = logit_scale * image_features @ text_features.T
-    logits_per_text = logits_per_image.T
-    batch_size = image_features.shape[0]
-    ground_truth = torch.arange(batch_size, dtype=torch.long, device=image_features.device)
-    loss_img = F.cross_entropy(logits_per_image, ground_truth)
-    loss_txt = F.cross_entropy(logits_per_text, ground_truth)
-    return (loss_img + loss_txt) / 2
-
 def train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use_amp, valid_texts):
     model.train()
     total_loss = 0.0
     pbar = tqdm(dataloader, desc="Training with DALI", leave=True)
+
     for batch in pbar:
         images, labels = batch[0]['data'], batch[0]['label'].squeeze(-1).long().tolist()
         texts = [valid_texts[i] for i in labels]
@@ -74,10 +64,15 @@ def train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use
 
         # autocast에 device_type을 명시하여 안정성 확보
         with autocast(enabled=use_amp, device_type='cuda'):
-            image_features = F.normalize(model.get_image_features(pixel_values=images), p=2, dim=-1)
-            text_features = F.normalize(model.get_text_features(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask']), p=2, dim=-1)
-            logit_scale = model.logit_scale.exp()
-            loss = contrastive_loss(image_features, text_features, logit_scale)
+            # 모델의 forward pass에 return_loss=True를 전달하면,
+            # 내부적으로 손실을 모두 계산하여 outputs.loss로 반환합니다.
+            outputs = model(
+                input_ids=inputs['input_ids'],
+                attention_mask=inputs['attention_mask'],
+                pixel_values=images,
+                return_loss=True  # 이 인자가 손실 계산을 활성화
+            )
+            loss = outputs.loss
 
         optimizer.zero_grad()
         scaler.scale(loss).backward()
@@ -101,7 +96,6 @@ def main():
         print("Error: NVIDIA DALI requires a GPU to run.")
         return
         
-    global use_amp
     use_amp = config['training']['use_amp'] and device.startswith('cuda')
     print(f"Using device: {device}, AMP: {'ENABLED' if use_amp else 'DISABLED'}")
 

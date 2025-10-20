@@ -33,7 +33,7 @@ class DALIPipeline(Pipeline):
         jpegs, labels = fn.readers.file(files=self.image_paths, name="file_reader")
         images = fn.decoders.image(jpegs, device="mixed")
         images = fn.resize(images, resize_shorter=self.resize_size)
-        output_dtype = types.FLOAT16 if use_amp else types.FLOAT
+        output_dtype = types.FLOAT
         
         # DALI 정규화를 위한 0-255 스케일 보정 적용
         images = fn.crop_mirror_normalize(
@@ -54,7 +54,6 @@ def create_database():
         print("Error: NVIDIA DALI requires a GPU to run.")
         return
 
-    global use_amp
     use_amp = config['retrieval']['use_amp'] and device.startswith('cuda')
     print(f"Using device: {device}, AMP: {'ENABLED' if use_amp else 'DISABLED'}")
 
