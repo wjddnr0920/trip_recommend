@@ -11,38 +11,47 @@ import numpy as np
 import random
 from torch.amp import GradScaler, autocast
 
-# DALI 라이브러리 임포트
 from nvidia.dali.pipeline import Pipeline
 import nvidia.dali.fn as fn
 import nvidia.dali.types as types
 from nvidia.dali.plugin.pytorch import DALIClassificationIterator, LastBatchPolicy
 
 def set_seed(seed):
-    """실험 재현성을 위해 랜덤 시드를 고정하는 함수"""
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
+# --- 최종 완성된 DALI 파이프라인 ---
 class DALITrainPipeline(Pipeline):
-    """학습을 위한 DALI 파이프라인 (데이터 증강 포함)"""
+    """
+    학습을 위한 DALI 파이프라인.
+    AutoProcessor로부터 전처리 값을 동적으로 읽어와 모든 모델에 자동 대응합니다.
+    """
     def __init__(self, image_paths, batch_size, num_threads, device_id, processor):
         super(DALITrainPipeline, self).__init__(batch_size, num_threads, device_id, seed=12)
         self.image_paths = image_paths
         image_proc = processor.image_processor
+        
+        # --- 핵심 개선: if/elif 제거! ---
+        # processor가 CLIP이든 SigLIP이든, 알맞은 mean/std 값을 제공합니다.
         self.mean = image_proc.image_mean
         self.std = image_proc.image_std
-        self.crop_size = image_proc.crop_size['height']
+        
+        # 1. crop_size가 유효한 딕셔너리인지 먼저 확인합니다.
+        if hasattr(image_proc, 'crop_size') and isinstance(image_proc.crop_size, dict):
+            self.crop_size = image_proc.crop_size['height']
+        # 2. 그렇지 않으면(None이거나 없는 경우), size 속성을 사용합니다.
+        else:
+            self.crop_size = image_proc.size['height']
         
     def define_graph(self):
         jpegs, labels = fn.readers.file(files=self.image_paths, name="file_reader", random_shuffle=True)
-        # 데이터 증강: 랜덤 크롭, 리사이즈, 랜덤 플립
         images = fn.decoders.image_random_crop(jpegs, device="mixed", output_type=types.RGB)
         images = fn.resize(images, size=self.crop_size)
         do_flip = fn.random.coin_flip(probability=0.5)
         images = fn.flip(images, horizontal=do_flip)
         output_dtype = types.FLOAT
         
-        # 정규화 시 0-255 스케일 보정
         images = fn.crop_mirror_normalize(
             images, dtype=output_dtype,
             mean=[m * 255.0 for m in self.mean],
@@ -51,26 +60,29 @@ class DALITrainPipeline(Pipeline):
         )
         return images, labels
 
-def train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use_amp, valid_texts):
+def train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use_amp, valid_texts, epoch, total_epochs):
     model.train()
     total_loss = 0.0
-    pbar = tqdm(dataloader, desc="Training with DALI", leave=True)
-
+    pbar = tqdm(dataloader, desc=f"Epoch {epoch}/{total_epochs} Training", leave=True)
+    
     for batch in pbar:
         images, labels = batch[0]['data'], batch[0]['label'].squeeze(-1).long().tolist()
         texts = [valid_texts[i] for i in labels]
+        
         tokenized_inputs = processor.tokenizer(text=texts, return_tensors="pt", padding=True, truncation=True)
         inputs = {k: v.to(device, non_blocking=True) for k, v in tokenized_inputs.items()}
 
-        # autocast에 device_type을 명시하여 안정성 확보
         with autocast(enabled=use_amp, device_type='cuda'):
-            # 모델의 forward pass에 return_loss=True를 전달하면,
-            # 내부적으로 손실을 모두 계산하여 outputs.loss로 반환합니다.
+            # 1. 텍스트 입력을 위한 딕셔너리 준비 (inputs 자체를 사용)
+            text_inputs = inputs
+            
+            # 2. **를 사용하여 모델에 인자 전달
+            # CLIP이면 {'input_ids': ..., 'attention_mask': ...}가 전달됨
+            # SigLIP이면 {'input_ids': ...}만 전달됨
             outputs = model(
-                input_ids=inputs['input_ids'],
-                attention_mask=inputs['attention_mask'],
+                **text_inputs,
                 pixel_values=images,
-                return_loss=True  # 이 인자가 손실 계산을 활성화
+                return_loss=True
             )
             loss = outputs.loss
 
@@ -78,30 +90,29 @@ def train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
+
         total_loss += loss.item()
-        pbar.set_postfix({"loss": loss.item()})
+        pbar.set_postfix({"loss": f"{loss.item():.4f}"})
+        
     return total_loss / len(dataloader)
 
 def main():
-    # 사용자 환경에 맞는 config 파일 경로 사용
     with open('/home/workspace/config_custom.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
     set_seed(config['system']['seed'])
-    print(f"Random seed set to {config['system']['seed']}")
-
     device_id = 0
     device = f"cuda:{device_id}" if torch.cuda.is_available() and config['system']['device'] == 'auto' else "cpu"
     if device == "cpu":
-        print("Error: NVIDIA DALI requires a GPU to run.")
-        return
+        print("Error: NVIDIA DALI requires a GPU to run."); return
         
     use_amp = config['training']['use_amp'] and device.startswith('cuda')
     print(f"Using device: {device}, AMP: {'ENABLED' if use_amp else 'DISABLED'}")
 
-    print("Loading CLIP model and processor...")
-    processor = AutoProcessor.from_pretrained(config['model']['model_id'], use_fast=True)
-    model = AutoModel.from_pretrained(config['model']['model_id']).to(device)
+    model_id = config['model']['model_id']
+    print(f"Loading model and processor for: {model_id}")
+    processor = AutoProcessor.from_pretrained(model_id, use_fast=True)
+    model = AutoModel.from_pretrained(model_id).to(device)
     print("Model loaded.")
 
     print("Preparing DALI pipeline for training...")
@@ -134,18 +145,19 @@ def main():
     )
     scaler = GradScaler(enabled=use_amp)
 
-    print("Starting training...")
-    for epoch in range(config['training']['epochs']):
-        avg_loss = train_one_epoch(model, dali_iterator, optimizer, processor, scaler, device, use_amp, valid_texts)
-        print(f"Epoch {epoch+1}/{config['training']['epochs']}, Average Loss: {avg_loss:.4f}")
+    print("\nStarting training...")
+    total_epochs = config['training']['epochs']
+    for epoch in range(total_epochs):
+        current_epoch = epoch + 1
+        avg_loss = train_one_epoch(model, dali_iterator, optimizer, processor, scaler, device, use_amp, valid_texts, current_epoch, total_epochs)
+        print(f"--- Epoch {current_epoch}/{total_epochs} Complete --- Average Loss: {avg_loss:.4f}\n")
     
     output_dir = config['paths']['output_dir']
     os.makedirs(output_dir, exist_ok=True)
-    model_name_safe = config['model']['model_id'].replace('/', '_')
+    model_name_safe = model_id.replace('/', '_')
     save_path = os.path.join(output_dir, f"finetuned_{model_name_safe}.pt")
     torch.save(model.state_dict(), save_path)
     print(f"Model fine-tuning complete. Saved to {save_path}")
 
 if __name__ == "__main__":
     main()
-
