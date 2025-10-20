@@ -102,7 +102,7 @@ def create_database():
     )
     print("DALI pipeline ready.")
 
-    embedding_dim = model.config.projection_dim
+    embedding_dim = getattr(model.config, "projection_dim", model.config.text_config.projection_size)
     base_index = faiss.IndexFlatIP(embedding_dim)
     index = faiss.IndexIDMap(base_index)
     id_map = {} 
