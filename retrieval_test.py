@@ -20,25 +20,34 @@ from nvidia.dali.plugin.pytorch import DALIClassificationIterator, LastBatchPoli
 
 class DALIInferencePipeline(Pipeline):
     """
-    추론(DB 생성/검색)용 DALI 파이프라인.
-    CLIPProcessor의 검증 전처리(리사이즈 -> 중앙 크롭)를 100% 모방합니다.
+    추론용 DALI 파이프라인.
+    AutoProcessor로부터 전처리 값을 동적으로 읽어와 모든 모델에 자동 대응합니다.
     """
     def __init__(self, image_paths, batch_size, num_threads, device_id, processor):
         super(DALIInferencePipeline, self).__init__(batch_size, num_threads, device_id, seed=12)
         self.image_paths = image_paths
         image_proc = processor.image_processor
+        
+        # processor가 CLIP이든 SigLIP이든, 알맞은 mean/std 값을 제공합니다.
         self.mean = image_proc.image_mean
         self.std = image_proc.image_std
-        self.resize_size = image_proc.size['shortest_edge']
-        self.crop_size = image_proc.crop_size['height']
+        
+        # crop_size(CLIP)와 size(SigLIP) 속성을 모두 안전하게 처리합니다.
+        if hasattr(image_proc, 'crop_size') and isinstance(image_proc.crop_size, dict):
+            self.crop_size = image_proc.crop_size['height']
+        else:
+            self.crop_size = image_proc.size['height']
+        
+        # 추론 시에는 리사이즈 크기도 필요합니다.
+        self.resize_size = image_proc.size.get('shortest_edge', self.crop_size)
 
     def define_graph(self):
         jpegs, labels = fn.readers.file(files=self.image_paths, name="file_reader")
         images = fn.decoders.image(jpegs, device="mixed")
+        # 비율 유지 리사이즈 -> 중앙 크롭의 정확한 추론 전처리
         images = fn.resize(images, resize_shorter=self.resize_size)
         output_dtype = types.FLOAT
         
-        # DALI 정규화를 위한 0-255 스케일 보정 적용
         images = fn.crop_mirror_normalize(
             images, dtype=output_dtype, crop=(self.crop_size, self.crop_size),
             mean=[m * 255.0 for m in self.mean],
@@ -46,6 +55,22 @@ class DALIInferencePipeline(Pipeline):
             output_layout="CHW"
         )
         return images, labels
+
+def calculate_map(predictions, ground_truth):
+    """mean Average Precision (mAP)을 계산하는 함수"""
+    total_average_precision, valid_queries_count = 0.0, 0
+    for query_id, retrieved_ids in predictions.items():
+        if query_id not in ground_truth or not ground_truth[query_id]: continue
+        valid_queries_count += 1
+        relevant_ids = ground_truth[query_id]
+        score, num_hits = 0.0, 0.0
+        for i, p_id in enumerate(retrieved_ids):
+            if p_id in relevant_ids:
+                num_hits += 1.0; precision_at_i = num_hits / (i + 1.0); score += precision_at_i
+        average_precision = score / len(relevant_ids)
+        total_average_precision += average_precision
+    if valid_queries_count == 0: return 0.0
+    return total_average_precision / valid_queries_count
 
 def calculate_map(predictions, ground_truth):
     """mean Average Precision (mAP)을 계산하는 함수"""
