@@ -216,3 +216,4 @@ notebook/
 .gitignore
 output/
 config_custom.yaml
+EDA/
