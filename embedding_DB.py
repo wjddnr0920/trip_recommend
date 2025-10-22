@@ -64,6 +64,8 @@ def create_database():
         return
 
     use_amp = config['retrieval']['use_amp'] and device.startswith('cuda')
+    model_id = config['model']['model_id']
+    print(f"Loading model and processor for: {model_id}")
     print(f"Using device: {device}, AMP: {'ENABLED' if use_amp else 'DISABLED'}")
 
     output_dir = config['paths']['output_dir']
@@ -102,7 +104,17 @@ def create_database():
     )
     print("DALI pipeline ready.")
 
-    embedding_dim = getattr(model.config, "projection_dim", model.config.text_config.projection_size)
+    if hasattr(model.config, "projection_dim"):
+        # CLIP 모델의 경우
+        embedding_dim = model.config.projection_dim
+        print(f"Embedding dimension (projection_dim) detected: {embedding_dim}")
+    elif hasattr(model.config, "text_config") and hasattr(model.config.text_config, "projection_size"):
+        # SigLIP 모델의 경우
+        embedding_dim = model.config.text_config.projection_size
+        print(f"Embedding dimension (text_config.projection_size) detected: {embedding_dim}")
+    else:
+        # 안전하게 에러 발생
+        raise AttributeError(f"Could not automatically determine embedding dimension for model {model_id}.")
     base_index = faiss.IndexFlatIP(embedding_dim)
     index = faiss.IndexIDMap(base_index)
     id_map = {} 
