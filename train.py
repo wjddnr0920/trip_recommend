@@ -60,16 +60,42 @@ class DALITrainPipeline(Pipeline):
         )
         return images, labels
 
-def train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use_amp, valid_texts, epoch, total_epochs):
+def train_one_epoch(model, dataloader, optimizer, processor, scaler, device, use_amp, valid_texts, epoch, total_epochs, model_id):
     model.train()
     total_loss = 0.0
     pbar = tqdm(dataloader, desc=f"Epoch {epoch}/{total_epochs} Training", leave=True)
+
+    model_id_lower = model_id.lower()
     
     for batch in pbar:
         images, labels = batch[0]['data'], batch[0]['label'].squeeze(-1).long().tolist()
         texts = [valid_texts[i] for i in labels]
+
+        tokenizer_kwargs = {
+            "text": texts,
+            "return_tensors": "pt",
+            "truncation": True 
+        }
         
-        tokenized_inputs = processor.tokenizer(text=texts, return_tensors="pt", padding=True, truncation=True)
+        if "google/siglip2" in model_id_lower:
+            # SigLIP2: max_length=64 고정
+            tokenizer_kwargs["padding"] = "max_length"
+            tokenizer_kwargs["max_length"] = 64 
+            print_msg = "Using SigLIP2 padding (max_length=64)"
+        elif "google/siglip" in model_id_lower:
+            # 일반 SigLIP: max_length 고정 (Processor 기본값 따름)
+            tokenizer_kwargs["padding"] = "max_length"
+            print_msg = "Using SigLIP padding (max_length)"
+        else: # 기본값 또는 CLIP
+            tokenizer_kwargs["padding"] = True # 배치별 동적 패딩
+            print_msg = "Using CLIP padding (dynamic)"
+
+        # (디버깅용) 첫 배치에서만 패딩 전략 출력
+        if pbar.n == 0:
+             print(f"Tokenizer padding strategy: {print_msg}")
+            
+        tokenized_inputs = processor.tokenizer(**tokenizer_kwargs)
+        
         inputs = {k: v.to(device, non_blocking=True) for k, v in tokenized_inputs.items()}
 
         with autocast(enabled=use_amp, device_type='cuda'):
@@ -149,7 +175,7 @@ def main():
     total_epochs = config['training']['epochs']
     for epoch in range(total_epochs):
         current_epoch = epoch + 1
-        avg_loss = train_one_epoch(model, dali_iterator, optimizer, processor, scaler, device, use_amp, valid_texts, current_epoch, total_epochs)
+        avg_loss = train_one_epoch(model, dali_iterator, optimizer, processor, scaler, device, use_amp, valid_texts, current_epoch, total_epochs, model_id)
         print(f"--- Epoch {current_epoch}/{total_epochs} Complete --- Average Loss: {avg_loss:.4f}\n")
     
     output_dir = config['paths']['output_dir']
