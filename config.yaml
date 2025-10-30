@@ -40,6 +40,11 @@ retrieval:
   # DB 생성 및 검색 시 사용할 배치 사이즈
   batch_size: 64
   use_amp: true
+  # 이어서 학습할 체크포인트 파일 경로 (없으면 null 또는 주석 처리)
+  # 예: "./output/checkpoint_epoch_3.pt"
+  resume_from_checkpoint: null
+  # 체크포인트 저장 빈도 (매 에포크마다 저장하려면 1)
+  save_checkpoint_interval: 1 
 # --- 시스템 설정 ---
 system:
   # 'auto'로 설정하면 코드가 자동으로 cuda/cpu를 결정
