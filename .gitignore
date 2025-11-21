@@ -215,5 +215,6 @@ data/
 notebook/
 .gitignore
 output/
+output_custom_db/
 config_custom.yaml
 EDA/
