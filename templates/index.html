@@ -3,97 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>이미지 검색 시연</title>
+    <title>여행지 이미지 검색 AI</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
-        h1 { text-align: center; color: #333; }
+        body { font-family: 'Pretendard', 'Segoe UI', sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; color: #333; }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; }
         
-        .upload-container {
-            background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-align: center; margin-bottom: 30px;
+        .upload-section {
+            background: white; padding: 40px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            text-align: center; margin-bottom: 40px; border: 1px solid #eee;
         }
-        .preview-box {
-            width: 300px; height: 300px; border: 2px dashed #ddd; margin: 20px auto;
-            display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;
-        }
-        .preview-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
-        .preview-text { color: #aaa; position: absolute; }
         
-        button {
-            background-color: #4CAF50; color: white; padding: 10px 20px; border: none;
-            border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 10px;
+        .preview-area {
+            width: 100%; max-width: 400px; height: 300px; border: 2px dashed #ccc; border-radius: 10px;
+            margin: 20px auto; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.3s; background-color: #fafafa; position: relative; overflow: hidden;
         }
-        button:hover { background-color: #45a049; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        .preview-area:hover { border-color: #4CAF50; background-color: #f0f9f0; }
+        .preview-area img { max-width: 100%; max-height: 100%; object-fit: contain; z-index: 2; }
+        .preview-text { color: #888; font-size: 16px; z-index: 1; }
+        
+        .btn-search {
+            background-color: #4CAF50; color: white; padding: 12px 30px; border: none;
+            border-radius: 25px; cursor: pointer; font-size: 18px; font-weight: bold;
+            transition: background 0.3s; margin-top: 15px;
+        }
+        .btn-search:hover { background-color: #45a049; }
+        .btn-search:disabled { background-color: #ccc; cursor: not-allowed; }
 
-        .results-grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;
-        }
-        .result-card {
-            background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-        }
-        .result-card:hover { transform: translateY(-5px); }
-        .result-img-box {
-            height: 150px; overflow: hidden; display: flex; align-items: center; justify-content: center; bg-color: #eee;
-        }
-        .result-img-box img { width: 100%; height: 100%; object-fit: cover; }
-        .result-info { padding: 10px; font-size: 14px; }
-        .score { color: #e91e63; font-weight: bold; }
-        .filename { color: #555; margin-top: 5px; word-break: break-all; font-size: 12px;}
+        .results-section { display: none; }
+        .section-title { font-size: 24px; margin-bottom: 20px; border-bottom: 2px solid #4CAF50; display: inline-block; padding-bottom: 5px; }
         
-        .loading { display: none; margin: 20px; font-size: 18px; color: #666; text-align: center;}
+        .grid-container {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 25px;
+        }
+        
+        .card {
+            background: white; border-radius: 12px; overflow: hidden; 
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08); transition: transform 0.2s;
+            display: flex; flex-direction: column;
+        }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
+        
+        .card-img { height: 180px; width: 100%; object-fit: cover; cursor: pointer; }
+        
+        .card-body { padding: 15px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; }
+        .card-rank { 
+            background: #2c3e50; color: white; padding: 3px 8px; border-radius: 4px; 
+            font-size: 12px; font-weight: bold; display: inline-block; margin-bottom: 5px; width: fit-content;
+        }
+        .card-filename { font-size: 14px; color: #333; font-weight: 600; margin-bottom: 5px; word-break: keep-all; line-height: 1.4;}
+        .card-score { color: #e91e63; font-size: 13px; font-weight: 500; }
+
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9); z-index: 1000; display: none;
+            align-items: center; justify-content: center; flex-direction: column;
+        }
+        .loader {
+            border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%;
+            width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
     <h1>🏖️ 여행지 이미지 검색 AI</h1>
 
-    <div class="upload-container">
-        <h3>유사한 사진을 찾고 싶은 이미지를 업로드하세요</h3>
-        <input type="file" id="fileInput" accept="image/*" style="display: none;">
-        <div class="preview-box" onclick="document.getElementById('fileInput').click()" style="cursor: pointer;">
-            <span class="preview-text">클릭하여 이미지 선택</span>
-            <img id="preview" src="" style="display: none;">
+    <div class="upload-section">
+        <p style="color: #666;">여행지 사진을 업로드하면 유사한 장소를 찾아드립니다.</p>
+        <input type="file" id="fileInput" accept="image/*" hidden>
+        <div class="preview-area" onclick="document.getElementById('fileInput').click()">
+            <span class="preview-text" id="previewText">📷 이미지를 클릭하여 업로드</span>
+            <img id="previewImg" style="display: none;">
         </div>
-        <button id="searchBtn" onclick="uploadAndSearch()" disabled>검색 시작</button>
+        <button class="btn-search" id="searchBtn" onclick="performSearch()" disabled>유사한 장소 찾기</button>
     </div>
 
-    <div id="loading" class="loading">AI가 유사한 여행지를 찾는 중입니다... ⏳</div>
+    <div class="results-section" id="resultsArea">
+        <div class="section-title">검색 결과 (Top 10)</div>
+        <div class="grid-container" id="resultsGrid"></div>
+    </div>
 
-    <div id="resultsArea">
-        <h2 id="resultTitle" style="display: none;">검색 결과</h2>
-        <div class="results-grid" id="resultsGrid"></div>
+    <div class="loading-overlay" id="loading">
+        <div class="loader"></div>
+        <div style="font-size: 18px; font-weight: bold; color: #4CAF50;">AI가 분석 중입니다...</div>
     </div>
 
     <script>
         const fileInput = document.getElementById('fileInput');
-        const preview = document.getElementById('preview');
+        const previewImg = document.getElementById('previewImg');
+        const previewText = document.getElementById('previewText');
         const searchBtn = document.getElementById('searchBtn');
-        const previewText = document.querySelector('.preview-text');
+        const resultsArea = document.getElementById('resultsArea');
+        const resultsGrid = document.getElementById('resultsGrid');
+        const loading = document.getElementById('loading');
 
-        fileInput.addEventListener('change', function(e) {
+        fileInput.addEventListener('change', (e) => {
             if (e.target.files && e.target.files[0]) {
                 const reader = new FileReader();
-                reader.onload = function(e) {
-                    preview.src = e.target.result;
-                    preview.style.display = 'block';
+                reader.onload = (e) => {
+                    previewImg.src = e.target.result;
+                    previewImg.style.display = 'block';
                     previewText.style.display = 'none';
                     searchBtn.disabled = false;
+                    // 새 이미지를 올리면 이전 결과 숨김
+                    resultsArea.style.display = 'none';
                 }
                 reader.readAsDataURL(e.target.files[0]);
             }
         });
 
-        async function uploadAndSearch() {
+        async function performSearch() {
             const file = fileInput.files[0];
             if (!file) return;
 
-            // UI 초기화
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('resultsGrid').innerHTML = '';
-            document.getElementById('resultTitle').style.display = 'none';
-            searchBtn.disabled = true;
+            loading.style.display = 'flex';
+            resultsGrid.innerHTML = '';
 
             const formData = new FormData();
             formData.append('file', file);
@@ -103,52 +129,52 @@
                     method: 'POST',
                     body: formData
                 });
-
                 const data = await response.json();
-                
+
                 if (data.error) {
-                    alert("오류 발생: " + data.error);
+                    alert('오류: ' + data.error);
                     return;
                 }
 
                 displayResults(data.results);
 
             } catch (error) {
-                console.error('Error:', error);
-                alert("서버 통신 중 오류가 발생했습니다.");
+                console.error(error);
+                alert('서버 연결에 실패했습니다.');
             } finally {
-                document.getElementById('loading').style.display = 'none';
-                searchBtn.disabled = false;
+                loading.style.display = 'none';
             }
         }
 
         function displayResults(results) {
-            const grid = document.getElementById('resultsGrid');
-            document.getElementById('resultTitle').style.display = 'block';
-
+            resultsArea.style.display = 'block';
+            
             if (results.length === 0) {
-                grid.innerHTML = '<p>유사한 이미지를 찾지 못했습니다.</p>';
+                resultsGrid.innerHTML = '<p style="grid-column: 1/-1; text-align:center;">유사한 이미지를 찾을 수 없습니다.</p>';
                 return;
             }
 
             results.forEach(item => {
-                // /image_proxy 엔드포인트를 통해 로컬 이미지 로드
-                const imageUrl = `/image_proxy?path=${encodeURIComponent(item.path)}`;
+                // 이미지 경로 인코딩
+                const imgUrl = `/image_proxy?path=${encodeURIComponent(item.path)}`;
                 
                 const card = document.createElement('div');
-                card.className = 'result-card';
+                card.className = 'card';
                 card.innerHTML = `
-                    <div class="result-img-box">
-                        <img src="${imageUrl}" alt="result" loading="lazy">
-                    </div>
-                    <div class="result-info">
-                        <div>Rank <span style="font-weight:bold">${item.rank}</span></div>
-                        <div class="score">유사도: ${item.score}</div>
-                        <div class="filename">${item.filename}</div>
+                    <img src="${imgUrl}" class="card-img" alt="${item.filename}" onclick="window.open(this.src)">
+                    <div class="card-body">
+                        <div>
+                            <span class="card-rank">${item.rank}위</span>
+                            <div class="card-filename">${item.filename}</div>
+                        </div>
+                        <div class="card-score">유사도: ${item.score}</div>
                     </div>
                 `;
-                grid.appendChild(card);
+                resultsGrid.appendChild(card);
             });
+            
+            // 결과 영역으로 스크롤 이동
+            resultsArea.scrollIntoView({ behavior: 'smooth' });
         }
     </script>
 </body>
