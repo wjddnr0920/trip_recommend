@@ -9,7 +9,7 @@ from PIL import Image
 import io
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, UploadFile, Request, HTTPException
+from fastapi import FastAPI, File, UploadFile, Request, HTTPException, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -71,7 +71,8 @@ async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/search")
-async def search_image(file: UploadFile = File(...)):
+# top_k 파라미터를 Form으로 받음 (기본값 10)
+async def search_image(file: UploadFile = File(...), top_k: int = Form(10)):
     """이미지를 업로드받아 중복 없는 검색 수행"""
     try:
         contents = await file.read()
@@ -93,8 +94,8 @@ async def search_image(file: UploadFile = File(...)):
         id_map = resources["id_map"]
         
         # --- 수정된 부분: 중복 제거 로직 ---
-        target_k = 10  # 최종적으로 보여줄 개수
-        fetch_k = 50   # 중복을 고려해 넉넉하게 가져올 후보 개수
+        target_k = top_k  # 최종적으로 보여줄 개수
+        fetch_k = max(50, target_k*3)   # 중복을 고려해 넉넉하게 가져올 후보 개수(최소 50개, 요청이 많으면 요청 * 3배)
         
         real_k = min(fetch_k, index.ntotal)
         distances, indices = index.search(query_vector, real_k)
@@ -109,7 +110,7 @@ async def search_image(file: UploadFile = File(...)):
             if idx_item in id_map:
                 file_path = os.path.join("/home/workspace/data", id_map[idx_item])
                 score = float(distances[0][i])
-                filename = os.path.basename(file_path) # 경로에서 파일명만 추출 (예: 'A.jpg')
+                filename = os.path.basename(file_path)[:-4] # 경로에서 파일명만 추출 (예: 'A.jpg' -> 'A')
                 
                 # 이미 나온 파일명인지 확인
                 if filename in seen_filenames:

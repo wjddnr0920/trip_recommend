@@ -22,10 +22,25 @@
         .preview-area img { max-width: 100%; max-height: 100%; object-fit: contain; z-index: 2; }
         .preview-text { color: #888; font-size: 16px; z-index: 1; }
         
+        .controls { 
+            margin-top: 20px; display: flex; justify-content: center; gap: 10px; align-items: center; 
+        }
+        
+        /* --- 수정된 부분: 입력 필드 스타일 --- */
+        .input-group {
+            display: flex; align-items: center; gap: 8px; background: #f1f1f1; padding: 5px 15px; border-radius: 25px;
+        }
+        .input-group label { font-size: 14px; font-weight: bold; color: #555; }
+        .input-group input {
+            width: 60px; padding: 8px; border: 1px solid #ccc; border-radius: 5px; 
+            text-align: center; font-size: 16px; outline: none;
+        }
+        .input-group input:focus { border-color: #4CAF50; }
+
         .btn-search {
             background-color: #4CAF50; color: white; padding: 12px 30px; border: none;
             border-radius: 25px; cursor: pointer; font-size: 18px; font-weight: bold;
-            transition: background 0.3s; margin-top: 15px;
+            transition: background 0.3s;
         }
         .btn-search:hover { background-color: #45a049; }
         .btn-search:disabled { background-color: #ccc; cursor: not-allowed; }
@@ -77,11 +92,19 @@
             <span class="preview-text" id="previewText">📷 이미지를 클릭하여 업로드</span>
             <img id="previewImg" style="display: none;">
         </div>
-        <button class="btn-search" id="searchBtn" onclick="performSearch()" disabled>유사한 장소 찾기</button>
+        
+        <div class="controls">
+            <!-- 수정된 부분: 직접 입력 필드 -->
+            <div class="input-group">
+                <label for="topKInput">검색 개수:</label>
+                <input type="number" id="topKInput" value="10" min="1" max="100">
+            </div>
+            <button class="btn-search" id="searchBtn" onclick="performSearch()" disabled>유사한 장소 찾기</button>
+        </div>
     </div>
 
     <div class="results-section" id="resultsArea">
-        <div class="section-title">검색 결과 (Top 10)</div>
+        <div class="section-title">검색 결과</div>
         <div class="grid-container" id="resultsGrid"></div>
     </div>
 
@@ -95,6 +118,7 @@
         const previewImg = document.getElementById('previewImg');
         const previewText = document.getElementById('previewText');
         const searchBtn = document.getElementById('searchBtn');
+        const topKInput = document.getElementById('topKInput'); // 입력 필드
         const resultsArea = document.getElementById('resultsArea');
         const resultsGrid = document.getElementById('resultsGrid');
         const loading = document.getElementById('loading');
@@ -107,7 +131,6 @@
                     previewImg.style.display = 'block';
                     previewText.style.display = 'none';
                     searchBtn.disabled = false;
-                    // 새 이미지를 올리면 이전 결과 숨김
                     resultsArea.style.display = 'none';
                 }
                 reader.readAsDataURL(e.target.files[0]);
@@ -118,11 +141,25 @@
             const file = fileInput.files[0];
             if (!file) return;
 
+            // 입력 값 검증
+            let topK = parseInt(topKInput.value);
+            if (isNaN(topK) || topK < 1) {
+                alert("검색 개수는 1 이상의 숫자여야 합니다.");
+                topKInput.value = 10;
+                return;
+            }
+            if (topK > 100) {
+                alert("검색 개수는 최대 100개까지만 가능합니다.");
+                topKInput.value = 100;
+                topK = 100;
+            }
+
             loading.style.display = 'flex';
             resultsGrid.innerHTML = '';
 
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('top_k', topK); // 입력된 값 전송
 
             try {
                 const response = await fetch('/search', {
@@ -155,7 +192,6 @@
             }
 
             results.forEach(item => {
-                // 이미지 경로 인코딩
                 const imgUrl = `/image_proxy?path=${encodeURIComponent(item.path)}`;
                 
                 const card = document.createElement('div');
@@ -173,7 +209,6 @@
                 resultsGrid.appendChild(card);
             });
             
-            // 결과 영역으로 스크롤 이동
             resultsArea.scrollIntoView({ behavior: 'smooth' });
         }
     </script>
