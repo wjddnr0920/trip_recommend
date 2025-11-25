@@ -23,24 +23,35 @@
         .preview-text { color: #888; font-size: 16px; z-index: 1; }
         
         .controls { 
-            margin-top: 20px; display: flex; justify-content: center; gap: 10px; align-items: center; 
+            margin-top: 20px; display: flex; flex-direction: column; gap: 15px; align-items: center; 
         }
         
-        /* --- 수정된 부분: 입력 필드 스타일 --- */
+        .control-row {
+            display: flex; gap: 20px; align-items: center; flex-wrap: wrap; justify-content: center;
+        }
+
         .input-group {
             display: flex; align-items: center; gap: 8px; background: #f1f1f1; padding: 5px 15px; border-radius: 25px;
         }
         .input-group label { font-size: 14px; font-weight: bold; color: #555; }
-        .input-group input {
+        .input-group input[type="number"] {
             width: 60px; padding: 8px; border: 1px solid #ccc; border-radius: 5px; 
             text-align: center; font-size: 16px; outline: none;
         }
-        .input-group input:focus { border-color: #4CAF50; }
+
+        /* --- 국가 선택 체크박스 스타일 --- */
+        .checkbox-group {
+            display: flex; gap: 15px; background: #fff; padding: 10px 20px; 
+            border: 1px solid #ddd; border-radius: 25px;
+        }
+        .checkbox-item { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        .checkbox-item input { cursor: pointer; transform: scale(1.2); accent-color: #4CAF50; }
+        .checkbox-item span { font-weight: 500; }
 
         .btn-search {
-            background-color: #4CAF50; color: white; padding: 12px 30px; border: none;
+            background-color: #4CAF50; color: white; padding: 12px 40px; border: none;
             border-radius: 25px; cursor: pointer; font-size: 18px; font-weight: bold;
-            transition: background 0.3s;
+            transition: background 0.3s; margin-top: 10px;
         }
         .btn-search:hover { background-color: #45a049; }
         .btn-search:disabled { background-color: #ccc; cursor: not-allowed; }
@@ -55,12 +66,17 @@
         .card {
             background: white; border-radius: 12px; overflow: hidden; 
             box-shadow: 0 3px 10px rgba(0,0,0,0.08); transition: transform 0.2s;
-            display: flex; flex-direction: column;
+            display: flex; flex-direction: column; position: relative;
         }
         .card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
         
         .card-img { height: 180px; width: 100%; object-fit: cover; cursor: pointer; }
         
+        .country-badge {
+            position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); color: white;
+            padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;
+        }
+
         .card-body { padding: 15px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; }
         .card-rank { 
             background: #2c3e50; color: white; padding: 3px 8px; border-radius: 4px; 
@@ -86,7 +102,6 @@
     <h1>🏖️ 여행지 이미지 검색 AI</h1>
 
     <div class="upload-section">
-        <p style="color: #666;">여행지 사진을 업로드하면 유사한 장소를 찾아드립니다.</p>
         <input type="file" id="fileInput" accept="image/*" hidden>
         <div class="preview-area" onclick="document.getElementById('fileInput').click()">
             <span class="preview-text" id="previewText">📷 이미지를 클릭하여 업로드</span>
@@ -94,11 +109,26 @@
         </div>
         
         <div class="controls">
-            <!-- 수정된 부분: 직접 입력 필드 -->
-            <div class="input-group">
-                <label for="topKInput">검색 개수:</label>
-                <input type="number" id="topKInput" value="10" min="1" max="100">
+            <div class="control-row">
+                <div class="input-group">
+                    <label for="topKInput">검색 개수:</label>
+                    <input type="number" id="topKInput" value="10" min="1" max="100">
+                </div>
+
+                <!-- 국가 선택 체크박스 -->
+                <div class="checkbox-group">
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="country" value="korea" checked> <span>한국 🇰🇷</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="country" value="japan" checked> <span>일본 🇯🇵</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="country" value="china" checked> <span>중국 🇨🇳</span>
+                    </label>
+                </div>
             </div>
+            
             <button class="btn-search" id="searchBtn" onclick="performSearch()" disabled>유사한 장소 찾기</button>
         </div>
     </div>
@@ -118,7 +148,7 @@
         const previewImg = document.getElementById('previewImg');
         const previewText = document.getElementById('previewText');
         const searchBtn = document.getElementById('searchBtn');
-        const topKInput = document.getElementById('topKInput'); // 입력 필드
+        const topKInput = document.getElementById('topKInput');
         const resultsArea = document.getElementById('resultsArea');
         const resultsGrid = document.getElementById('resultsGrid');
         const loading = document.getElementById('loading');
@@ -141,17 +171,16 @@
             const file = fileInput.files[0];
             if (!file) return;
 
-            // 입력 값 검증
             let topK = parseInt(topKInput.value);
-            if (isNaN(topK) || topK < 1) {
-                alert("검색 개수는 1 이상의 숫자여야 합니다.");
-                topKInput.value = 10;
+            if (isNaN(topK) || topK < 1) topK = 10;
+
+            // 선택된 국가 수집
+            const checkboxes = document.querySelectorAll('input[name="country"]:checked');
+            const selectedCountries = Array.from(checkboxes).map(cb => cb.value);
+
+            if (selectedCountries.length === 0) {
+                alert("최소한 하나의 국가를 선택해야 합니다.");
                 return;
-            }
-            if (topK > 100) {
-                alert("검색 개수는 최대 100개까지만 가능합니다.");
-                topKInput.value = 100;
-                topK = 100;
             }
 
             loading.style.display = 'flex';
@@ -159,7 +188,12 @@
 
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('top_k', topK); // 입력된 값 전송
+            formData.append('top_k', topK);
+            
+            // 선택된 국가들을 각각 append (FastAPI의 List[str] = Form(...) 처리 방식)
+            selectedCountries.forEach(country => {
+                formData.append('countries', country);
+            });
 
             try {
                 const response = await fetch('/search', {
@@ -187,17 +221,26 @@
             resultsArea.style.display = 'block';
             
             if (results.length === 0) {
-                resultsGrid.innerHTML = '<p style="grid-column: 1/-1; text-align:center;">유사한 이미지를 찾을 수 없습니다.</p>';
+                resultsGrid.innerHTML = '<p style="grid-column: 1/-1; text-align:center;">조건에 맞는 유사한 이미지를 찾을 수 없습니다.</p>';
                 return;
             }
 
             results.forEach(item => {
                 const imgUrl = `/image_proxy?path=${encodeURIComponent(item.path)}`;
                 
+                // 국가 코드에 따라 깃발 이모지 표시 (선택 사항)
+                let flag = '';
+                if (item.country === 'korea') flag = '🇰🇷';
+                else if (item.country === 'japan') flag = '🇯🇵';
+                else if (item.country === 'china') flag = '🇨🇳';
+
                 const card = document.createElement('div');
                 card.className = 'card';
                 card.innerHTML = `
-                    <img src="${imgUrl}" class="card-img" alt="${item.filename}" onclick="window.open(this.src)">
+                    <div style="position:relative;">
+                        <img src="${imgUrl}" class="card-img" alt="${item.filename}" onclick="window.open(this.src)">
+                        ${item.country ? `<div class="country-badge">${flag} ${item.country.toUpperCase()}</div>` : ''}
+                    </div>
                     <div class="card-body">
                         <div>
                             <span class="card-rank">${item.rank}위</span>
