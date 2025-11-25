@@ -34,7 +34,6 @@ def load_resources():
     processor = AutoProcessor.from_pretrained(model_id, use_fast=True)
     model = AutoModel.from_pretrained(model_id).to(device)
     
-    # 파인튜닝된 가중치 로드
     finetuned_path = config['model'].get('finetuned_path')
     if finetuned_path and os.path.exists(finetuned_path):
         checkpoint = torch.load(finetuned_path, map_location=device)
@@ -57,39 +56,32 @@ def load_resources():
         "device": device
     }
 
-# --- Lifespan (서버 시작/종료 시 실행) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 시작 시 리소스 로드
     global resources
     resources = load_resources()
     yield
-    # 종료 시 정리 (필요하면 추가)
     resources.clear()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 
-# --- 엔드포인트 ---
-
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    """메인 페이지 렌더링"""
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/search")
 async def search_image(file: UploadFile = File(...)):
-    """이미지를 업로드받아 검색 수행"""
+    """이미지를 업로드받아 중복 없는 검색 수행"""
     try:
-        # 1. 업로드된 이미지 읽기
         contents = await file.read()
         query_image = Image.open(io.BytesIO(contents)).convert("RGB")
 
-        # 2. 모델 추론 (임베딩 추출)
         processor = resources["processor"]
         model = resources["model"]
         device = resources["device"]
         
+        # CPU 전용이므로 to(device)만 호출
         inputs = processor(images=query_image, return_tensors="pt").to(device)
         
         with torch.no_grad():
@@ -97,29 +89,44 @@ async def search_image(file: UploadFile = File(...)):
             embedding = F.normalize(features, p=2, dim=-1)
             query_vector = embedding.numpy()
 
-        # 3. Faiss 검색
         index = resources["index"]
         id_map = resources["id_map"]
         
-        k = 10 # 상위 10개 검색
-        distances, indices = index.search(query_vector, k)
+        # --- 수정된 부분: 중복 제거 로직 ---
+        target_k = 10  # 최종적으로 보여줄 개수
+        fetch_k = 50   # 중복을 고려해 넉넉하게 가져올 후보 개수
+        
+        real_k = min(fetch_k, index.ntotal)
+        distances, indices = index.search(query_vector, real_k)
 
         results = []
+        seen_filenames = set() # 이미 결과에 담은 파일명을 기록할 집합
+
         for i, idx in enumerate(indices[0]):
             if idx == -1: continue
             idx_item = int(idx)
+            
             if idx_item in id_map:
                 file_path = os.path.join("/home/workspace/data", id_map[idx_item])
                 score = float(distances[0][i])
-                # 파일 경로에서 파일명만 추출 (표시용)
-                filename = os.path.basename(file_path)
+                filename = os.path.basename(file_path) # 경로에서 파일명만 추출 (예: 'A.jpg')
                 
+                # 이미 나온 파일명인지 확인
+                if filename in seen_filenames:
+                    continue # 중복이면 건너뜀
+                
+                # 중복이 아니면 추가
+                seen_filenames.add(filename)
                 results.append({
-                    "rank": i + 1,
-                    "path": file_path, # 실제 전체 경로
+                    "rank": len(results) + 1, # 현재 결과 리스트 길이를 기반으로 순위 매김
+                    "path": file_path,
                     "filename": filename,
                     "score": f"{score:.4f}"
                 })
+                
+                # 목표 개수를 채우면 중단
+                if len(results) >= target_k:
+                    break
 
         return {"results": results}
 
@@ -129,7 +136,6 @@ async def search_image(file: UploadFile = File(...)):
 
 @app.get("/image_proxy")
 async def get_image(path: str):
-    """로컬 경로의 이미지를 브라우저에 표시하기 위한 프록시"""
     if os.path.exists(path):
         return FileResponse(path)
     return HTTPException(status_code=404, detail="Image not found")
