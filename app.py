@@ -113,7 +113,7 @@ async def search_image(file: UploadFile = File(...), top_k: int = Form(10), coun
         
         # --- 수정된 부분: 중복 제거 로직 ---
         target_k = top_k  # 최종적으로 보여줄 개수
-        fetch_k = len(path_to_country)   # 필터링으로 인해 탈락할 후보를 고려하여 Faiss에서 전체 검색
+        fetch_k = index.ntotal   # 필터링으로 인해 탈락할 후보를 고려하여 Faiss에서 전체 검색
         
         real_k = min(fetch_k, index.ntotal)
         distances, indices = index.search(query_vector, real_k)
