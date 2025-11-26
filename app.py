@@ -1,4 +1,5 @@
 import os
+import argparse
 import yaml
 import torch
 import torch.nn.functional as F
@@ -20,8 +21,16 @@ from transformers import AutoProcessor, AutoModel
 resources = {}
 
 def load_resources():
-    config_path = '/home/workspace/config_dataset.yaml'
+    config_path = os.getenv("APP_CONFIG_PATH")
+    
+    if not config_path:
+        # main 블록을 거치지 않고 uvicorn으로 직접 실행했을 경우를 대비한 에러 처리
+        raise RuntimeError("Config path is missing. Please run with 'python app.py --config <path>'")
+    
     print(f"Loading config from {config_path}...")
+    
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found at {config_path}")
     
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -197,4 +206,19 @@ async def get_image(path: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    
+    parser = argparse.ArgumentParser(description="FastAPI Image Search Server")
+    
+    # --- 수정된 부분: required=True로 설정하여 무조건 입력받게 함 ---
+    parser.add_argument("--config", type=str, required=True, help="Path to the configuration YAML file (REQUIRED)")
+    
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the server on")
+    parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
+    
+    args = parser.parse_args()
+    
+    # 환경 변수에 설정 경로 저장
+    os.environ["APP_CONFIG_PATH"] = args.config
+    
+    print(f"Starting server with config: {args.config}")
+    uvicorn.run("app:app", host=args.host, port=args.port, reload=True)
