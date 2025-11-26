@@ -26,7 +26,7 @@ def load_resources():
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 
-    device = "cpu"
+    device = "cuda" if torch.cuda.is_available() and config['system']['device'] == 'auto' else "cpu"
     model_id = config['model']['model_id']
     output_dir = config['paths']['output_dir']
 
@@ -47,7 +47,7 @@ def load_resources():
     with open(os.path.join(output_dir, "id_map.pkl"), 'rb') as f:
         id_map = pickle.load(f)
 
-    metadata_path = '/home/workspace/data/database/total_metadata.csv'
+    metadata_path = config['paths']['custom_metadata_csv']
     print(f"Loading metadata from {metadata_path}...")
     try:
         df = pd.read_csv(metadata_path)
@@ -146,7 +146,7 @@ async def search_by_image(
         with torch.no_grad():
             features = model.get_image_features(**inputs)
             embedding = F.normalize(features, p=2, dim=-1)
-            query_vector = embedding.numpy()
+            query_vector = embedding.cpu().numpy()
 
         results = process_search_results(query_vector, top_k, countries)
         return {"results": results}
@@ -180,7 +180,7 @@ async def search_by_text(
             # 텍스트 임베딩 추출
             features = model.get_text_features(**inputs)
             embedding = F.normalize(features, p=2, dim=-1)
-            query_vector = embedding.numpy()
+            query_vector = embedding.cpu().numpy()
 
         results = process_search_results(query_vector, top_k, countries)
         return {"results": results}
