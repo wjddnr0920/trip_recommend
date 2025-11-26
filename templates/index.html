@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>여행지 검색 AI</title>
+    <style>
+        body { font-family: 'Pretendard', 'Segoe UI', sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; color: #333; }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; }
+        
+        /* 탭 스타일 */
+        .tabs { display: flex; justify-content: center; margin-bottom: 20px; gap: 10px; }
+        .tab-btn {
+            padding: 12px 30px; border: none; background: #ddd; cursor: pointer;
+            border-radius: 25px; font-size: 16px; font-weight: bold; color: #666;
+            transition: all 0.3s;
+        }
+        .tab-btn.active { background: #4CAF50; color: white; box-shadow: 0 4px 10px rgba(76, 175, 80, 0.3); }
+
+        .search-container {
+            background: white; padding: 40px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            text-align: center; margin-bottom: 40px; border: 1px solid #eee; min-height: 400px;
+        }
+        
+        /* 이미지 업로드 영역 */
+        .image-upload-area { display: none; }
+        .image-upload-area.active { display: block; }
+        
+        .preview-box {
+            width: 100%; max-width: 400px; height: 300px; border: 2px dashed #ccc; border-radius: 10px;
+            margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; background-color: #fafafa; position: relative; overflow: hidden;
+        }
+        .preview-box:hover { border-color: #4CAF50; background-color: #f0f9f0; }
+        .preview-box img { max-width: 100%; max-height: 100%; object-fit: contain; z-index: 2; }
+        .preview-text { color: #888; font-size: 16px; }
+
+        /* 텍스트 입력 영역 */
+        .text-input-area { display: none; padding: 40px 20px; }
+        .text-input-area.active { display: block; }
+        
+        .text-query-input {
+            width: 80%; max-width: 600px; padding: 15px; border: 2px solid #ddd; border-radius: 10px;
+            font-size: 18px; outline: none; transition: border 0.3s;
+        }
+        .text-query-input:focus { border-color: #4CAF50; }
+
+        /* 공통 컨트롤 */
+        .controls { margin-top: 30px; display: flex; flex-direction: column; gap: 15px; align-items: center; }
+        .control-row { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; justify-content: center; }
+        
+        .input-group {
+            display: flex; align-items: center; gap: 8px; background: #f1f1f1; padding: 5px 15px; border-radius: 25px;
+        }
+        .input-group input[type="number"] {
+            width: 60px; padding: 8px; border: 1px solid #ccc; border-radius: 5px; 
+            text-align: center; font-size: 16px; outline: none;
+        }
+
+        .checkbox-group {
+            display: flex; gap: 15px; background: #fff; padding: 10px 20px; 
+            border: 1px solid #ddd; border-radius: 25px;
+        }
+        .checkbox-item { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        .checkbox-item input { transform: scale(1.2); accent-color: #4CAF50; }
+
+        .btn-search {
+            background-color: #4CAF50; color: white; padding: 15px 50px; border: none;
+            border-radius: 30px; cursor: pointer; font-size: 20px; font-weight: bold;
+            transition: background 0.3s; margin-top: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .btn-search:hover { background-color: #45a049; transform: translateY(-2px); }
+        .btn-search:disabled { background-color: #ccc; cursor: not-allowed; transform: none; box-shadow: none;}
+
+        /* 결과 영역 스타일은 이전과 동일 */
+        .results-section { display: none; }
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 25px; }
+        .card { 
+            background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 3px 10px rgba(0,0,0,0.08); 
+            transition: transform 0.2s; position: relative;
+        }
+        .card:hover { transform: translateY(-5px); }
+        .card-img { height: 180px; width: 100%; object-fit: cover; cursor: pointer; }
+        .country-badge { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .card-body { padding: 15px; }
+        .card-filename { font-size: 14px; font-weight: 600; margin-bottom: 5px; word-break: keep-all; }
+        .card-score { color: #e91e63; font-size: 13px; font-weight: 500; }
+
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9); z-index: 1000; display: none;
+            align-items: center; justify-content: center; flex-direction: column;
+        }
+        .loader {
+            border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%;
+            width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <h1>🏖️ 여행지 검색 AI</h1>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('image')">📷 이미지로 검색</button>
+        <button class="tab-btn" onclick="switchTab('text')">📝 텍스트로 검색</button>
+    </div>
+
+    <div class="search-container">
+        <!-- 이미지 검색 영역 -->
+        <div id="imageArea" class="image-upload-area active">
+            <input type="file" id="fileInput" accept="image/*" hidden>
+            <div class="preview-box" onclick="document.getElementById('fileInput').click()">
+                <span class="preview-text" id="previewText">여기를 클릭하여 사진 업로드</span>
+                <img id="previewImg" style="display: none;">
+            </div>
+        </div>
+
+        <!-- 텍스트 검색 영역 -->
+        <div id="textArea" class="text-input-area">
+            <input type="text" id="textInput" class="text-query-input" placeholder="찾고 싶은 여행지를 묘사해주세요 (예: 바닷가에 있는 하얀 등대)">
+        </div>
+
+        <!-- 공통 컨트롤 -->
+        <div class="controls">
+            <div class="control-row">
+                <div class="input-group">
+                    <label for="topKInput">개수:</label>
+                    <input type="number" id="topKInput" value="10" min="1" max="100">
+                </div>
+                <div class="checkbox-group">
+                    <label class="checkbox-item"><input type="checkbox" name="country" value="korea" checked> <span>한국 🇰🇷</span></label>
+                    <label class="checkbox-item"><input type="checkbox" name="country" value="japan" checked> <span>일본 🇯🇵</span></label>
+                    <label class="checkbox-item"><input type="checkbox" name="country" value="china" checked> <span>중국 🇨🇳</span></label>
+                </div>
+            </div>
+            <button class="btn-search" id="searchBtn" onclick="performSearch()">검색 시작</button>
+        </div>
+    </div>
+
+    <div class="results-section" id="resultsArea">
+        <div class="grid-container" id="resultsGrid"></div>
+    </div>
+
+    <div class="loading-overlay" id="loading">
+        <div class="loader"></div>
+        <div style="font-size: 18px; font-weight: bold; color: #4CAF50;">AI가 여행지를 찾는 중...</div>
+    </div>
+
+    <script>
+        let currentMode = 'image'; // 'image' or 'text'
+
+        const fileInput = document.getElementById('fileInput');
+        const previewImg = document.getElementById('previewImg');
+        const previewText = document.getElementById('previewText');
+        const textInput = document.getElementById('textInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const resultsArea = document.getElementById('resultsArea');
+        const resultsGrid = document.getElementById('resultsGrid');
+        const loading = document.getElementById('loading');
+
+        // 탭 전환 함수
+        function switchTab(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (mode === 'image') {
+                document.getElementById('imageArea').classList.add('active');
+                document.getElementById('textArea').classList.remove('active');
+            } else {
+                document.getElementById('imageArea').classList.remove('active');
+                document.getElementById('textArea').classList.add('active');
+            }
+            resultsArea.style.display = 'none';
+        }
+
+        // 이미지 미리보기
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    previewImg.src = e.target.result;
+                    previewImg.style.display = 'block';
+                    previewText.style.display = 'none';
+                }
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+
+        // 엔터키 검색 지원 (텍스트 모드)
+        textInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+
+        async function performSearch() {
+            const formData = new FormData();
+            let endpoint = '';
+
+            // 모드별 유효성 검사 및 데이터 준비
+            if (currentMode === 'image') {
+                if (!fileInput.files[0]) {
+                    alert("이미지를 업로드해주세요.");
+                    return;
+                }
+                formData.append('file', fileInput.files[0]);
+                endpoint = '/search_image';
+            } else {
+                const query = textInput.value.trim();
+                if (!query) {
+                    alert("검색어를 입력해주세요.");
+                    return;
+                }
+                formData.append('text_query', query);
+                endpoint = '/search_text';
+            }
+
+            // 공통 파라미터
+            let topK = parseInt(document.getElementById('topKInput').value);
+            if (isNaN(topK) || topK < 1) topK = 10;
+            formData.append('top_k', topK);
+
+            const checkboxes = document.querySelectorAll('input[name="country"]:checked');
+            const selectedCountries = Array.from(checkboxes).map(cb => cb.value);
+            if (selectedCountries.length === 0) {
+                alert("최소한 하나의 국가를 선택해야 합니다.");
+                return;
+            }
+            selectedCountries.forEach(c => formData.append('countries', c));
+
+            // UI 업데이트
+            loading.style.display = 'flex';
+            resultsGrid.innerHTML = '';
+            searchBtn.disabled = true;
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    alert('오류: ' + data.error);
+                    return;
+                }
+                displayResults(data.results);
+
+            } catch (error) {
+                console.error(error);
+                alert('서버 연결 실패');
+            } finally {
+                loading.style.display = 'none';
+                searchBtn.disabled = false;
+            }
+        }
+
+        function displayResults(results) {
+            resultsArea.style.display = 'block';
+            if (results.length === 0) {
+                resultsGrid.innerHTML = '<p style="grid-column: 1/-1; text-align:center;">검색 결과가 없습니다.</p>';
+                return;
+            }
+
+            results.forEach(item => {
+                const imgUrl = `/image_proxy?path=${encodeURIComponent(item.path)}`;
+                let flag = '';
+                if (item.country === 'korea') flag = '🇰🇷';
+                else if (item.country === 'japan') flag = '🇯🇵';
+                else if (item.country === 'china') flag = '🇨🇳';
+
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div style="position:relative;">
+                        <img src="${imgUrl}" class="card-img" alt="${item.filename}" onclick="window.open(this.src)">
+                        ${item.country ? `<div class="country-badge">${flag} ${item.country.toUpperCase()}</div>` : ''}
+                    </div>
+                    <div class="card-body">
+                        <div>
+                            <span class="card-rank">${item.rank}위</span>
+                            <div class="card-filename">${item.filename}</div>
+                        </div>
+                        <div class="card-score">유사도: ${item.score}</div>
+                    </div>
+                `;
+                resultsGrid.appendChild(card);
+            });
+            resultsArea.scrollIntoView({ behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

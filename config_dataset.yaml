@@ -24,17 +24,17 @@ custom_dataset_columns:
 # --- 모델 관련 설정 ---
 model:
   # 사용할 모델 (CLIP 또는 SigLIP)
-  model_id: 'google/siglip2-base-patch16-224'
+  model_id: 'google/siglip2-base-patch16-384'
   
   # 파인튜닝된 모델 가중치 (없으면 null)
-  finetuned_path: "/home/workspace/output/new_dataset/SigLIP2/train_clean_sampling_dali_epoch5_v2/finetuned_google_siglip2-base-patch16-224.pt"
+  finetuned_path: "/home/workspace/output/new_dataset/SigLIP2/train_clean_dali_epoch5/finetuned_google_siglip2-base-patch16-384_final.pt"
 
 # --- 검색(Retrieval) 관련 설정 ---
 retrieval:
-  batch_size: 64
-  use_amp: true
+  batch_size: 32
+  use_amp: false
 
 # --- 시스템 설정 ---
 system:
-  device: 'auto'
+  device: 'cpu'
   num_workers: 4
