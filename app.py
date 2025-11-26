@@ -106,7 +106,7 @@ def process_search_results(query_vector, top_k, countries):
         
         if idx_item in id_map:
             rel_path = id_map[idx_item]
-            file_path = os.path.join("/home/workspace/data", rel_path)
+            file_path = os.path.join(resources["config"]['paths']['custom_image_root'], rel_path)
             
             img_country = path_to_country.get(rel_path.strip())
             if img_country and img_country not in target_countries:
