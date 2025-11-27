@@ -214,7 +214,7 @@ pyrightconfig.json
 data/
 notebook/
 .gitignore
-output/
-output_custom_db/
-config_custom.yaml
 EDA/
+artifacts/
+train_config_custom.yaml
+service_config_custom.yaml
