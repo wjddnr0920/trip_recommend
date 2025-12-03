@@ -12,10 +12,9 @@ from transformers import AutoProcessor, AutoModel
 import pickle
 
 # --- PyTorch Dataset 클래스 (DALI 대체) ---
-class CustomInferenceDataset(Dataset):
+class CustomDataset(Dataset):
     """
-    추론을 위한 커스텀 데이터셋 (PyTorch DataLoader용)
-    AutoProcessor를 사용하여 모델에 맞는 전처리를 수행합니다.
+    DB 생성을 위한 커스텀 데이터셋 (PyTorch DataLoader용)
     """
     def __init__(self, metadata_path, img_root, path_col, id_col, processor):
         self.processor = processor
@@ -56,7 +55,7 @@ class CustomInferenceDataset(Dataset):
             image = Image.open(img_path).convert("RGB")
             
             # 2. 전처리 (AutoProcessor)
-            # CLIP/SigLIP 여부에 따라 알아서 리사이즈, 크롭, 정규화를 수행합니다.
+            # CLIP/SigLIP 여부에 따라 알아서 리사이즈, 크롭, 정규화를 수행
             inputs = self.processor(images=image, return_tensors="pt")
             
             # (1, C, H, W) -> (C, H, W) 차원 축소
@@ -69,7 +68,9 @@ class CustomInferenceDataset(Dataset):
             return None
 
 def collate_fn_skip_none(batch):
-    """손상된 이미지(None)를 건너뛰고 배치를 구성하는 함수"""
+    """
+    손상된 이미지(None)를 건너뛰고 배치를 구성하는 함수
+    """
     batch = list(filter(lambda x: x is not None, batch))
     if not batch:
         return None
@@ -79,36 +80,36 @@ def collate_fn_skip_none(batch):
     
     return {"image": images, "id": ids}
 
-def create_database(config_path):
-    with open(config_path, 'r') as f:
+def create_database():
+    with open('/home/workspace/configs/trip_config_custom.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
-    # --- CPU 강제 설정 ---
+    # CPU 설정
     device = "cpu"
     print(f"Running on: {device}")
     
     # CPU에서는 AMP 비활성화
     print("AMP is DISABLED (CPU mode).")
 
-    output_dir = config['paths']['output_dir']
-    os.makedirs(output_dir, exist_ok=True)
-
+    # 모델 및 프로세서 로드
     model_id = config['model']['model_id']
     print(f"Loading model and processor for: {model_id}")
     
-    # 모델 로딩
+    print("Loading model and processor...")
     processor = AutoProcessor.from_pretrained(model_id, use_fast=True)
     model = AutoModel.from_pretrained(model_id).to(device)
     
-    # 파인튜닝된 가중치 로드 (CPU 매핑 필수)
+    # 파인튜닝된 모델이 있다면 불러오기 (CPU 매핑)
     finetuned_path = config['model'].get('finetuned_path')
     if finetuned_path and os.path.exists(finetuned_path):
         model.load_state_dict(torch.load(finetuned_path, map_location=torch.device('cpu')))
         print(f"Loaded fine-tuned weights from: {finetuned_path}")
+    
     model.eval()
-
+    
+    # Dataset 및 DataLoader 준비
     print("Preparing DataLoader...")
-    dataset = CustomInferenceDataset(
+    dataset = CustomDataset(
         metadata_path=config['paths']['custom_metadata_csv'],
         img_root=config['paths'].get('custom_image_root', ''),
         path_col=config['custom_dataset_columns']['image_path_column'],
@@ -125,16 +126,17 @@ def create_database(config_path):
         collate_fn=collate_fn_skip_none
     )
     
-    # 임베딩 차원 자동 감지
+    # CLIP 모델의 경우
     if hasattr(model.config, "projection_dim"):
         embedding_dim = model.config.projection_dim
+        print(f"Embedding dimension (projection_dim) detected: {embedding_dim}")
+    # SigLIP 시리즈 모델의 경우
     elif hasattr(model.config, "text_config") and hasattr(model.config.text_config, "projection_size"):
         embedding_dim = model.config.text_config.projection_size
+        print(f"Embedding dimension (text_config.projection_size) detected: {embedding_dim}")
     else:
-        # Fallback for some models
-        embedding_dim = model.config.hidden_size
-    
-    print(f"Embedding dimension detected: {embedding_dim}")
+        # 안전하게 에러 발생
+        raise AttributeError(f"Could not automatically determine embedding dimension for model {model_id}.")
 
     base_index = faiss.IndexFlatIP(embedding_dim)
     index = faiss.IndexIDMap(base_index)
@@ -146,17 +148,19 @@ def create_database(config_path):
         for batch in tqdm(dataloader, desc="Creating embeddings (CPU)"):
             if batch is None: continue
             
-            images = batch['image'].to(device) # 이미 CPU에 있지만 명시적으로
+            images = batch['image'].to(device) # 이미 CPU에 있지만 명시적으로 이동
             str_image_ids = batch['id']
             
-            # 모델 추론
             embeddings = model.get_image_features(pixel_values=images)
-            # L2 정규화
             embeddings = F.normalize(embeddings, p=2, dim=-1)
-            
-            # --- ID 매핑 및 인덱스 추가 ---
+
+            '''
+            DALI파이프라인을 사용하지 않으므로 이미지마다 고유 인덱스가 없음
+            따라서 현재까지 처리한 이미지 수를 기준으로 정수 ID를 생성
+            배치를 사용하기 때문에 고유 ID를 가질 수 있도록 현재 인덱스 카운터를 활용
+            '''
+            # 0부터 시작하는 순차적인 정수 ID 생성 (uint64)          
             num_in_batch = len(str_image_ids)
-            # 0부터 시작하는 순차적인 정수 ID 생성 (uint64)
             int_image_ids = np.arange(current_index_counter, current_index_counter + num_in_batch, dtype=np.uint64)
 
             # Faiss에 추가
@@ -170,10 +174,13 @@ def create_database(config_path):
                 
     print(f"Successfully processed and indexed {index.ntotal} images.")
     
+    # Faiss 인덱스 파일(.index)과 ID 매핑 파일(.pkl) 저장
+    output_dir = config['paths']['output_dir']
+    os.makedirs(output_dir, exist_ok=True)
     faiss.write_index(index, os.path.join(output_dir, "image_features.index"))
     with open(os.path.join(output_dir, "id_map.pkl"), "wb") as f:
         pickle.dump(id_map, f)
     print(f"Faiss index and ID map saved to '{output_dir}'")
 
 if __name__ == '__main__':
-    create_database(config_path='/home/workspace/config_dataset.yaml')
+    create_database()
