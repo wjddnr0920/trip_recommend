@@ -165,6 +165,7 @@ def create_database():
                 
     print(f"Successfully processed and indexed {index.ntotal} images.")
     
+    # Faiss 인덱스 파일(.index)과 ID 매핑 파일(.pkl) 저장
     output_dir = config['paths']['output_dir']
     os.makedirs(output_dir, exist_ok=True)
     faiss.write_index(index, os.path.join(output_dir, "image_features.index"))
