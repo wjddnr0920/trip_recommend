@@ -217,4 +217,4 @@ notebook/
 EDA/
 artifacts/
 train_config_custom.yaml
-service_config_custom.yaml
+trip_config_custom.yaml
