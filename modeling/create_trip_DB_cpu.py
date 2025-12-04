@@ -11,7 +11,7 @@ import numpy as np
 from transformers import AutoProcessor, AutoModel
 import pickle
 
-# --- PyTorch Dataset 클래스 (DALI 대체) ---
+# PyTorch Dataset 클래스 (DALI 대체)
 class CustomDataset(Dataset):
     """
     DB 생성을 위한 커스텀 데이터셋 (PyTorch DataLoader용)
@@ -23,7 +23,7 @@ class CustomDataset(Dataset):
         print("Filtering valid image paths (CPU mode)...")
         df = pd.read_csv(metadata_path)
         
-        # 유효한 이미지 파일만 리스트에 담습니다.
+        # 유효한 이미지 경로 준비
         for _, row in tqdm(df.iterrows(), total=len(df)):
             try:
                 relative_path = str(row[path_col]).strip()
@@ -35,7 +35,7 @@ class CustomDataset(Dataset):
                         "id": str(row[id_col]).strip()
                     })
             except Exception:
-                continue # 에러 발생 시 건너뜀
+                continue
 
         if not self.valid_data:
             print("Error: No valid images found! Check your CSV path and column names.")
@@ -51,11 +51,10 @@ class CustomDataset(Dataset):
         str_id = item["id"]
         
         try:
-            # 1. 이미지 로드 (PIL)
+            # 이미지 로드(PIL)
             image = Image.open(img_path).convert("RGB")
             
-            # 2. 전처리 (AutoProcessor)
-            # CLIP/SigLIP 여부에 따라 알아서 리사이즈, 크롭, 정규화를 수행
+            # AutoProcessor로 CLIP/SigLIP 여부에 따라 자동으로 리사이즈, 크롭, 정규화 수행
             inputs = self.processor(images=image, return_tensors="pt")
             
             # (1, C, H, W) -> (C, H, W) 차원 축소
@@ -71,10 +70,13 @@ def collate_fn_skip_none(batch):
     """
     손상된 이미지(None)를 건너뛰고 배치를 구성하는 함수
     """
+
+    # 배치 내의 None 데이터 필터링
     batch = list(filter(lambda x: x is not None, batch))
     if not batch:
         return None
     
+    # 이미지 텐서를 배치 단위로 스택 (C, H, W) -> (B, C, H, W)
     images = torch.stack([d['image'] for d in batch])
     ids = [d['id'] for d in batch]
     
