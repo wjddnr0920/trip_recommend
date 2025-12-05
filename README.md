@@ -107,7 +107,7 @@ python app.py --config config.yaml
 
 서버가 정상적으로 실행되면 터미널에 아래와 같은 로그가 출력됩니다.
 ```bash
-INFO:     Uvicorn running on [http://0.0.0.0:8000](http://0.0.0.0:8000) (Press CTRL+C to quit)
+INFO:     Application startup complete.
 ```
 
 ### 4. 서버 접속
