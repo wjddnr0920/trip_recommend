@@ -1,0 +1,36 @@
+# trip 데이터셋 경로 설정
+paths:
+  # 메타데이터 CSV 파일 경로
+  custom_metadata_csv: './data/database/total_metadata.csv'
+  
+  # 이미지 파일의 루트 디렉토리
+  custom_image_root: './data' # 예: '/home/workspace/data'
+
+  # 생성된 DB를 저장할 출력 디렉토리
+  output_dir: "./artifacts/travel_DB"
+
+# trip 데이터셋 컬럼 설정
+custom_dataset_columns:
+  # 이미지 파일 경로가 포함된 컬럼 이름
+  image_path_column: 'directory'
+  
+  # Faiss ID에 매핑할 컬럼 이름, 이미지를 다이렉트로 보여주기 위해 파일 경로로 설정
+  unique_id_column: 'directory' 
+
+# 모델 설정
+model:
+  # Hugging Face 모델 ID
+  model_id: 'google/siglip2-base-patch16-384'
+  
+  # 파인튜닝된 모델 가중치 경로(필요 시 지정)
+  finetuned_path: null
+
+# DB 생성 설정
+retrieval:
+  batch_size: 32
+  use_amp: false
+
+# 시스템 설정
+system:
+  device: 'cpu'
+  num_workers: 4
