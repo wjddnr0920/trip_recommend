@@ -33,9 +33,8 @@
 ```bash
 project_root/
 │
-├── data/                      # 원본 데이터(다운로드 필요)
-│   └── trip/              # 이미지 파일들이 저장된 폴더
-│     └── metadata.csv           # 메타데이터 파일
+├── trip/                      # 원본 데이터(다운로드 필요)
+│   └── metadata.csv           # 메타데이터 파일
 │
 ├── artifacts/                 # 모델 및 DB 파일(다운로드 필요)
 │   ├── models/                # 파인튜닝된 모델 (.pt)
@@ -70,15 +69,33 @@ pip install -r requirements.txt
 
 ### 2. 데이터 및 모델 준비 (Data Setup)
 
-데이터와 모델, DB는 아래 링크에서 다운받으세요.\
-<준비중>\
-다운받은 파일을 아래 경로에 맞게 위치시켜 주세요.
+데이터와 모델, DB는 아래 링크에서 다운받으세요.
+* `데이터` : [data.tar]() (준비중)
+* `모델/DB` : [model.tar]() (준비중)
 
-1. **이미지 데이터**: `data/trip/` 폴더 안에 이미지 파일들을 넣으세요.
-
-2. **모델**: `artifacts/models/` 폴더 안에 학습된 모델(`trip_recommend.pt`)을 넣으세요.
-
-3. **DB**: `artifacts/travel_DB/` 폴더 안에 DB 파일(`image_features.index`, `id_map.pkl`)을 넣으세요.
+다운받은 파일의 압축을 풀어주세요.
+```bash
+tar -xvf data.tar
+tar -xvf model.tar
+```
+모든 파일을 압축 해제 시 폴더 구조는 다음과 같습니다.
+```bash
+project_root/
+│
+├── trip/
+│   ├── china/
+│   ├── japan/
+│   ├── korea/
+│   └── metadata.csv
+│
+├── artifacts/
+│   ├── models/
+│   │   └── trip_recommend.pt
+│   │
+│   └── travel_DB/
+│       ├──image_features.index
+│       └── id_map.pkl
+```
 
 ### 3. 웹 서버 실행 (Running Server)
 웹 서버를 실행하여 서비스를 시작합니다.
@@ -105,9 +122,9 @@ INFO:     Uvicorn running on [http://0.0.0.0:8000](http://0.0.0.0:8000) (Press C
 paths:
   output_dir: "./artifacts/travel_DB"                     # 저장한 DB 폴더 경로
 
-  custom_metadata_csv: './data/metadata.csv'              # 저장한 메타데이터 경로
+  custom_metadata_csv: './trip/metadata.csv'              # 저장한 메타데이터 경로
   
-  custom_image_root: './data'                             # 저장한 이미지 데이터 경로
+  custom_image_root: './'                                 # 저장한 데이터의 루트
 
 model:
   finetuned_path: "./artifacts/models/trip_recommend.pt"  # 저장한 모델 경로
