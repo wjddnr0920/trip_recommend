@@ -1,40 +1,36 @@
-# --- 프로젝트 전반에 사용될 경로 설정 ---
+# trip 데이터셋 경로 설정
 paths:
-  # 생성된 DB 및 모델 가중치를 저장할 출력 디렉토리
-  output_dir: "/home/workspace/output_custom_db"
-
-  # --- 커스텀 데이터셋 설정 ---
-  # 1. 메타데이터 CSV 파일 경로
-  custom_metadata_csv: '/home/workspace/data/database/total_metadata.csv' # (중요) 실제 CSV 파일 경로로 수정
+  # 메타데이터 CSV 파일 경로
+  custom_metadata_csv: './data/database/total_metadata.csv'
   
-  # 2. 이미지 파일의 루트 디렉토리
-  #    (CSV의 경로가 '/home/...' 같은 절대 경로이면 이 값을 "" 빈 문자열로 두세요)
-  #    (CSV의 경로가 'database/korea/...' 같은 상대 경로이면, 그 앞의 루트 경로를 적으세요)
-  custom_image_root: '/home/workspace/data' # 예: '/home/workspace/'
+  # 이미지 파일의 루트 디렉토리
+  custom_image_root: './data' # 예: '/home/workspace/data'
 
-# --- 커스텀 데이터셋 컬럼 설정 ---
+  # 생성된 DB를 저장할 출력 디렉토리
+  output_dir: "./artifacts/travel_DB"
+
+# trip 데이터셋 컬럼 설정
 custom_dataset_columns:
-  # CSV에서 실제 이미지 파일 경로가 포함된 컬럼 이름
+  # 이미지 파일 경로가 포함된 컬럼 이름
   image_path_column: 'directory'
   
-  # Faiss ID에 매핑할 고유한 '문자열' ID가 포함된 컬럼 이름
-  # (경로 자체가 고유 ID이므로 'directory' 사용, 'title'도 가능)
+  # Faiss ID에 매핑할 컬럼 이름, 이미지를 다이렉트로 보여주기 위해 파일 경로로 설정
   unique_id_column: 'directory' 
 
-# --- 모델 관련 설정 ---
+# 모델 설정
 model:
-  # 사용할 모델 (CLIP 또는 SigLIP)
+  # Hugging Face 모델 ID
   model_id: 'google/siglip2-base-patch16-384'
   
-  # 파인튜닝된 모델 가중치 (없으면 null)
-  finetuned_path: "/home/workspace/output/new_dataset/SigLIP2/train_clean_dali_epoch5/finetuned_google_siglip2-base-patch16-384_final.pt"
+  # 파인튜닝된 모델 가중치 경로(필요 시 지정)
+  finetuned_path: null
 
-# --- 검색(Retrieval) 관련 설정 ---
+# DB 생성 설정
 retrieval:
   batch_size: 32
   use_amp: false
 
-# --- 시스템 설정 ---
+# 시스템 설정
 system:
   device: 'cpu'
   num_workers: 4
