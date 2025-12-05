@@ -70,8 +70,8 @@ pip install -r requirements.txt
 ### 2. 데이터 및 모델 준비 (Data Setup)
 
 데이터와 모델, DB는 아래 링크에서 다운받으세요.
-* `데이터` : [data.tar]() (준비중)
-* `모델/DB` : [model.tar]() (준비중)
+* `데이터` : [data.tar](https://drive.google.com/file/d/1YXVe6Zxlk1CwJ98C5eQcUdVyXdtsObPH/view?usp=drive_link)
+* `모델/DB` : [model.tar](https://drive.google.com/file/d/13nF0hdPP-wEvO7umalMMGAKE8-zY-PUM/view?usp=drive_link)
 
 다운받은 파일의 압축을 풀어주세요.
 ```bash
