@@ -218,3 +218,4 @@ EDA/
 artifacts/
 train_config_custom.yaml
 trip_config_custom.yaml
+config_custom.yaml
