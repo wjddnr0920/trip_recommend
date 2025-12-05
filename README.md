@@ -2,7 +2,7 @@
 
 **VLM(Vision-Language Model) 기술을 활용한 멀티모달 여행지 검색 서비스입니다.**
 
-사용자가 여행지 사진을 업로드하거나 텍스트로 묘사하면, 구축된 벡터 데이터베이스에서 가장 유사한 여행지 정보를 찾아 추천해줍니다. Google의 **SigLIP2** 모델을 **GLDv2 데이터셋**으로 파인튜닝하여 여행지 도메인에 특화된 성능을 제공하며, **FastAPI**를 통해 웹 서비스로 구현되었습니다.
+사용자가 여행지 사진을 업로드하거나 텍스트로 묘사하면, 구축된 벡터 데이터베이스에서 가장 유사한 여행지 정보를 찾아 추천해줍니다. Google의 **SigLIP2** 모델을 [GLDv2 데이터셋](https://github.com/cvdfoundation/google-landmark)으로 파인튜닝하여 여행지 도메인에 특화된 성능을 제공하며, **FastAPI**를 통해 웹 서비스로 구현되었습니다.
 
 ---
 
@@ -10,7 +10,7 @@
 
 * **📷 이미지 검색 (Image-to-Image)**: 내가 가진 여행지 사진을 올리면, 그와 분위기나 장소가 비슷한 다른 여행지를 찾아줍니다.
 * **📝 텍스트 검색 (Text-to-Image)**: "바닷가에 있는 하얀 등대", "가을 단풍이 예쁜 산" 처럼 텍스트로 검색할 수 있습니다.
-* **🌍 국가 필터링**: 한국, 일본, 중국 등 원하는 국가의 여행지만 골라서 볼 수 있습니다.
+* **🌍 국가 필터링**: 원하는 국가의 여행지만 골라서 볼 수 있습니다. (현재는 한국, 중국, 일본만 지원)
 * **⚡ 고속 검색**: Faiss 벡터 DB를 사용하여 수만 장의 이미지 중에서 결과를 빠르게 찾아냅니다.
 * **🛡️ 중복 제거**: 동일한 장소의 중복된 이미지는 자동으로 걸러내어 다양한 결과를 보여줍니다.
 
@@ -21,7 +21,7 @@
 * **Model**: [Google SigLIP2](https://huggingface.co/google/siglip2-base-patch16-384) (Fine-tuned)
 * **Search Engine**: Faiss (Facebook AI Similarity Search)
 * **Data Processing**: NVIDIA DALI (GPU Preprocessing), Pandas, Pillow
-* **Backend**: Python, FastAPI, Uvicorn
+* **Backend**: FastAPI, Uvicorn
 * **Frontend**: HTML5, CSS3, Vanilla JS (Jinja2 Templates)
 
 ---
@@ -34,8 +34,8 @@
 project_root/
 │
 ├── data/                      # 원본 데이터(다운로드 필요)
-│   ├── database/              # 이미지 파일들이 저장된 폴더
-│   └── metadata.csv           # 메타데이터 파일
+│   └── trip/              # 이미지 파일들이 저장된 폴더
+│     └── metadata.csv           # 메타데이터 파일
 │
 ├── artifacts/                 # 모델 및 DB 파일(다운로드 필요)
 │   ├── models/                # 파인튜닝된 모델 (.pt)
@@ -58,10 +58,10 @@ Python 3.11 이상의 환경이 필요합니다.
 ```bash
 # 저장소 클론 (또는 다운로드)
 git clone https://github.com/wjddnr0920/trip_recommend.git
-cd <project-folder>
+cd trip_recommend
 
 # 가상환경 생성 (선택사항)
-conda create -n travel-ai python=3.11
+conda create -n travel-ai python=3.11.14
 conda activate travel-ai
 
 # 필수 라이브러리 설치
@@ -74,9 +74,9 @@ pip install -r requirements.txt
 <준비중>\
 다운받은 파일을 아래 경로에 맞게 위치시켜 주세요.
 
-1. **이미지 데이터**: `data/database/` 폴더 안에 이미지 파일들을 넣으세요.
+1. **이미지 데이터**: `data/trip/` 폴더 안에 이미지 파일들을 넣으세요.
 
-2. **모델**: `artifacts/models/` 폴더 안에 학습된 모델(`.pt`)을 넣으세요.
+2. **모델**: `artifacts/models/` 폴더 안에 학습된 모델(`trip_recommend.pt`)을 넣으세요.
 
 3. **DB**: `artifacts/travel_DB/` 폴더 안에 DB 파일(`image_features.index`, `id_map.pkl`)을 넣으세요.
 
@@ -93,7 +93,7 @@ python app.py --config config.yaml
 INFO:     Uvicorn running on [http://0.0.0.0:8000](http://0.0.0.0:8000) (Press CTRL+C to quit)
 ```
 
-### 4. 서비스 접속
+### 4. 서버 접속
 웹 브라우저를 열고 아래 주소로 접속하세요.
 
 * **URL**: `http://localhost:8000`
