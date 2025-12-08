@@ -4,10 +4,10 @@ paths:
   output_dir: "./artifacts/travel_DB"
 
   # 메타데이터 CSV 파일 경로
-  custom_metadata_csv: './data/database/total_metadata.csv'
+  custom_metadata_csv: './trip/metadata.csv'
   
   # 이미지 파일의 루트 디렉토리
-  custom_image_root: './data'
+  custom_image_root: './'
 
 # 모델 설정
 model:
