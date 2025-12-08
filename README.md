@@ -10,10 +10,13 @@
 
 ### 1. 📷 이미지 검색 (Image-to-Image)
 ![Image](https://github.com/user-attachments/assets/35ee8d24-ac7b-49c5-b006-42cdbe3412c8)\
-내가 가진 여행지 사진을 올리면, 그와 분위기나 장소가 비슷한 다른 여행지를 찾아줍니다.
-* **📝 텍스트 검색 (Text-to-Image)**: "바닷가에 있는 하얀 등대", "가을 단풍이 예쁜 산" 처럼 텍스트로 검색할 수 있습니다.
-* **🌍 국가 필터링**: 원하는 국가(한/중/일)의 여행지만 골라서 볼 수 있습니다.
-* **⚡ 고속 검색**: Faiss 벡터 DB를 사용하여 결과를 빠르게 찾아냅니다.
+내가 가진 여행지 이미지를 올리면, 그와 분위기나 장소가 비슷한 다른 여행지를 찾아줍니다.
+### 2. 📝 텍스트 검색 (Text-to-Image) 
+![Image](https://github.com/user-attachments/assets/31eed5a0-5f2f-47ba-88f1-084ad5a42453)\
+"바닷가에 있는 하얀 등대", "가을 단풍이 예쁜 산" 처럼 텍스트로 검색할 수 있습니다.
+### 3. 🌍 국가 필터링
+![Image](https://github.com/user-attachments/assets/a73dd500-e6fc-4964-a134-01fe94251baa)\
+원하는 국가(한/중/일)의 여행지만 골라서 볼 수 있습니다.
 
 ---
 
