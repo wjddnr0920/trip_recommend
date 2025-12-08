@@ -84,7 +84,6 @@
         .country-badge { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .card-body { padding: 15px; }
         .card-filename { font-size: 14px; font-weight: 600; margin-bottom: 5px; word-break: keep-all; }
-        .card-score { color: #e91e63; font-size: 13px; font-weight: 500; }
 
         .loading-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -218,7 +217,16 @@
 
             // 공통 파라미터
             let topK = parseInt(document.getElementById('topKInput').value);
-            if (isNaN(topK) || topK < 1) topK = 10;
+            if (isNaN(topK) || topK < 1) {
+                alert("검색 개수는 1 이상의 숫자여야 합니다.");
+                document.getElementById('topKInput').value = 10;
+                return;
+            }
+            if (topK > 100) {
+                alert("최대 100개까지 검색 가능합니다.");
+                document.getElementById('topKInput').value = 100;
+                topK = 100;
+            }
             formData.append('top_k', topK);
 
             const checkboxes = document.querySelectorAll('input[name="country"]:checked');
@@ -282,7 +290,6 @@
                             <span class="card-rank">${item.rank}위</span>
                             <div class="card-filename">${item.filename}</div>
                         </div>
-                        <div class="card-score">유사도: ${item.score}</div>
                     </div>
                 `;
                 resultsGrid.appendChild(card);
