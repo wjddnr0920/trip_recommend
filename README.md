@@ -94,7 +94,6 @@ project_root/
 ### 3. 웹 서버 실행 (Running Server)
 
 ```bash
-# 메인 앱 실행 (설정 파일 경로 지정 필수)
 python app.py --config config.yaml
 ```
 
