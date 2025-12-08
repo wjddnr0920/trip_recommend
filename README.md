@@ -2,7 +2,7 @@
 
 **VLM(Vision-Language Model) 기술을 활용한 멀티모달 여행지 검색 서비스입니다.**
 
-사용자가 여행지 사진을 업로드하거나 텍스트로 묘사하면, 구축된 벡터 데이터베이스에서 가장 유사한 여행지 정보를 찾아 추천해줍니다. Google의 **SigLIP2** 모델을 [GLDv2 데이터셋](https://github.com/cvdfoundation/google-landmark)으로 파인튜닝하여 여행지 도메인에 특화된 성능을 제공하며, **FastAPI**를 통해 웹 서비스로 구현되었습니다.
+사용자가 여행지 사진을 업로드하거나 텍스트로 묘사하면, 구축된 벡터 데이터베이스에서 가장 유사한 여행지 정보를 찾아 추천해줍니다. Google의 **SigLIP2** 모델을 [GLDv2 데이터셋](https://github.com/cvdfoundation/google-landmark)으로 파인튜닝하여 여행지 도메인에 특화된 성능을 제공하며, **FastAPI**를 통해 데모를 구현했습니다.
 
 ---
 
@@ -55,15 +55,9 @@ project_root/
 Python 3.11 이상의 환경이 필요합니다.
 
 ```bash
-# 저장소 클론 (또는 다운로드)
 git clone https://github.com/wjddnr0920/trip_recommend.git
 cd trip_recommend
 
-# 가상환경 생성 (선택사항)
-conda create -n travel-ai python=3.11.14
-conda activate travel-ai
-
-# 필수 라이브러리 설치
 pip install -r requirements.txt
 ```
 
@@ -98,14 +92,13 @@ project_root/
 ```
 
 ### 3. 웹 서버 실행 (Running Server)
-웹 서버를 실행하여 서비스를 시작합니다.
 
 ```bash
 # 메인 앱 실행 (설정 파일 경로 지정 필수)
 python app.py --config config.yaml
 ```
 
-서버가 정상적으로 실행되면 터미널에 아래와 같은 로그가 출력됩니다.
+모델과 DB가 정상적으로 로딩되면 터미널에 아래와 같은 로그가 출력됩니다.
 ```bash
 INFO:     Application startup complete.
 ```
@@ -124,7 +117,7 @@ paths:
 
   custom_metadata_csv: './trip/metadata.csv'              # 저장한 메타데이터 경로
   
-  custom_image_root: './'                                 # 저장한 데이터의 루트
+  custom_image_root: './'                                 # 저장한 데이터의 루트 폴더 경로
 
 model:
   finetuned_path: "./artifacts/models/trip_recommend.pt"  # 저장한 모델 경로
