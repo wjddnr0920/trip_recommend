@@ -2,7 +2,7 @@
 
 **VLM(Vision-Language Model)을 활용한 멀티모달 여행지 검색 서비스입니다.**
 
-사용자가 여행지 사진을 업로드하거나 텍스트로 묘사하면, 구축된 벡터 데이터베이스에서 가장 유사한 여행지 이미지를 찾아 추천해줍니다. Google의 **SigLIP2** 모델을 [GLDv2 데이터셋](https://github.com/cvdfoundation/google-landmark)으로 파인튜닝하여 여행지 도메인에 특화된 성능을 제공하며, **FastAPI**를 통해 데모를 구현했습니다.
+사용자가 여행지 사진을 업로드하거나 텍스트로 묘사하면, 벡터 데이터베이스에서 가장 유사한 여행지 이미지를 찾아 추천해줍니다. Google의 [**SigLIP2**](https://arxiv.org/pdf/2502.14786) 모델을 [GLDv2 데이터셋](https://github.com/cvdfoundation/google-landmark)으로 파인튜닝하여 여행지 도메인에 특화된 성능을 제공하며, **FastAPI**를 통해 데모를 구현했습니다.
 
 ---
 
@@ -10,23 +10,30 @@
 
 ### 1. 📷 이미지 검색 (Image-to-Image)
 ![Image](https://github.com/user-attachments/assets/35ee8d24-ac7b-49c5-b006-42cdbe3412c8)\
-내가 가진 여행지 이미지를 올리면, 그와 분위기나 장소가 비슷한 다른 여행지를 찾아줍니다.
+사용자가 가진 여행지 이미지를 업로드하면, 그와 분위기나 장소가 비슷한 다른 여행지를 찾아줍니다.
 ### 2. 📝 텍스트 검색 (Text-to-Image) 
 ![Image](https://github.com/user-attachments/assets/31eed5a0-5f2f-47ba-88f1-084ad5a42453)\
-"바닷가에 있는 하얀 등대", "가을 단풍이 예쁜 산" 처럼 텍스트로 검색할 수 있습니다.
-### 3. 🌍 국가 필터링
+"바다 근처에 있는 절", "건물 사이에 있는 강" 처럼 텍스트로 검색할 수 있습니다.
+### 3. 🌍 국가 필터링 (Country Filtering)
 ![Image](https://github.com/user-attachments/assets/a73dd500-e6fc-4964-a134-01fe94251baa)\
 원하는 국가(한/중/일)의 여행지만 골라서 볼 수 있습니다.
 
 ---
 
+## 📊 모델 성능 (Model Performance)
+| Model | ViT | Metric | Score | Remark |
+| :--- | :--- | :--- | :--- | :--- |
+| **SigLIP2** | **B/16(384)** | **mAP@100** | **0.1747** | GLDv2 Image Retrieval Task |
+
+---
+
 ## 🛠️ 기술 스택 (Tech Stack)
 
-* **Model**: [Google SigLIP2](https://huggingface.co/google/siglip2-base-patch16-384) (Fine-tuned)
-* **Search Engine**: Faiss (Facebook AI Similarity Search)
-* **Data Processing**: NVIDIA DALI (GPU Preprocessing), Pandas, Pillow
+* **Langauge**: Python
+* **AI Framework**: Pytorch, NVIDIA DALI, FAISS
 * **Backend**: FastAPI, Uvicorn
-* **Frontend**: HTML5, CSS3, Vanilla JS (Jinja2 Templates)
+* **Frontend**: HTML5, CSS3, Vanilla JavaScript
+* **Devops**: Docker, GCP
 
 ---
 
@@ -91,7 +98,7 @@ project_root/
 │   │   └── trip_recommend.pt
 │   │
 │   └── travel_DB/
-│       ├──image_features.index
+│       ├── image_features.index
 │       └── id_map.pkl
 ```
 
@@ -125,6 +132,3 @@ paths:
 model:
   finetuned_path: "./artifacts/models/trip_recommend.pt"  # 저장한 모델 경로
 ```
-
-## 📝 라이선스 (License)
-This project is licensed under the MIT License.
